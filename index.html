@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>The Geometry of Alignment — RLHF, GRPO, DPO, and DRO in One Dimension</title>
+<title>The Geometry of Alignment — RLHF, PPO, GRPO, DPO, and DRO in One Dimension</title>
 
 <!-- Plotly for plots -->
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
@@ -32,6 +32,7 @@
     --reward: #b07b1c;     /* reward: amber */
     --accent: #1f4f8b;     /* trajectory / highlights — exact ∇J */
     --pg:     #d35e7f;     /* Policy Gradient trajectory: rose */
+    --ppo:    #a0522d;     /* PPO trajectory: sienna */
     --dpo:    #7d3c98;     /* DPO trajectory: violet */
     --dro:    #0e8388;     /* DRO trajectory: teal */
     --pi-soft:    rgba(192,57,43,0.15);
@@ -39,6 +40,7 @@
     --reward-soft: rgba(176,123,28,0.18);
     --ref-soft:    rgba(107,107,107,0.12);
     --pg-soft:     rgba(211,94,127,0.14);
+    --ppo-soft:    rgba(160,82,45,0.14);
     --dpo-soft:    rgba(125,60,152,0.14);
     --dro-soft:    rgba(14,131,136,0.14);
   }
@@ -268,11 +270,12 @@
   .t-star   { color: var(--star);   font-weight: 600; }
   .t-reward { color: var(--reward); font-weight: 600; }
   .t-pg     { color: var(--pg);     font-weight: 600; }
+  .t-ppo    { color: var(--ppo);    font-weight: 600; }
   .t-dpo    { color: var(--dpo);    font-weight: 600; }
   .t-dro    { color: var(--dro);    font-weight: 600; }
   .t-exact  { color: var(--accent); font-weight: 600; }
   .t-pi .katex, .t-ref .katex, .t-star .katex, .t-reward .katex,
-  .t-pg .katex, .t-dpo .katex, .t-dro .katex, .t-exact .katex { color: inherit; }
+  .t-pg .katex, .t-ppo .katex, .t-dpo .katex, .t-dro .katex, .t-exact .katex { color: inherit; }
 
   /* Equation row beneath an uppercase panel-title. */
   .panel-eq {
@@ -310,12 +313,13 @@
   .tab-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   /* Active-tab gating: hide elements that belong to other tabs. */
-  body[data-active-tab="rlhf"]    :is(.tab-pg, .tab-grpo, .tab-dpo, .tab-dro, .tab-compare),
-  body[data-active-tab="pg"]      :is(.tab-rlhf, .tab-grpo, .tab-dpo, .tab-dro, .tab-compare),
-  body[data-active-tab="grpo"]    :is(.tab-rlhf, .tab-pg, .tab-dpo, .tab-dro, .tab-compare),
-  body[data-active-tab="dpo"]     :is(.tab-rlhf, .tab-pg, .tab-grpo, .tab-dro, .tab-compare),
-  body[data-active-tab="dro"]     :is(.tab-rlhf, .tab-pg, .tab-grpo, .tab-dpo, .tab-compare),
-  body[data-active-tab="compare"] :is(.tab-rlhf, .tab-pg, .tab-grpo, .tab-dpo, .tab-dro) { display: none; }
+  body[data-active-tab="rlhf"]    :is(.tab-pg, .tab-ppo, .tab-grpo, .tab-dpo, .tab-dro, .tab-compare),
+  body[data-active-tab="pg"]      :is(.tab-rlhf, .tab-ppo, .tab-grpo, .tab-dpo, .tab-dro, .tab-compare),
+  body[data-active-tab="ppo"]     :is(.tab-rlhf, .tab-pg, .tab-grpo, .tab-dpo, .tab-dro, .tab-compare),
+  body[data-active-tab="grpo"]    :is(.tab-rlhf, .tab-pg, .tab-ppo, .tab-dpo, .tab-dro, .tab-compare),
+  body[data-active-tab="dpo"]     :is(.tab-rlhf, .tab-pg, .tab-ppo, .tab-grpo, .tab-dro, .tab-compare),
+  body[data-active-tab="dro"]     :is(.tab-rlhf, .tab-pg, .tab-ppo, .tab-grpo, .tab-dpo, .tab-compare),
+  body[data-active-tab="compare"] :is(.tab-rlhf, .tab-pg, .tab-ppo, .tab-grpo, .tab-dpo, .tab-dro) { display: none; }
 
   /* Sidebar groups — three visually distinct trays for "Experiment setting",
      "Learned policy", and "Method hyperparameters". Each gets a subtle
@@ -351,6 +355,19 @@
   .group-experiment { background: rgba(176,123,28,0.06); border-left-color: var(--reward); }
   .group-policy     { background: rgba(192,57,43,0.06); border-left-color: var(--pi); }
   .group-method     { background: rgba(31,79,139,0.06); border-left-color: var(--accent); }
+  /* Compare-tab clickable legend: each algorithm label in the panel title
+     acts as a toggle for that trace. Inherits color from the .t-* class. */
+  .cmp-toggle {
+    background: none; border: none; padding: 0 2px; margin: 0;
+    font: inherit; color: inherit; cursor: pointer;
+    font-weight: 600;
+    border-radius: 2px;
+    transition: opacity 0.12s, background 0.12s;
+  }
+  .cmp-toggle:hover { background: rgba(0,0,0,0.06); }
+  .cmp-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .cmp-toggle.cmp-off { opacity: 0.32; text-decoration: line-through; font-weight: 500; }
+
   /* The method group takes on the color of the active method, so moving
      between tabs visibly "swaps" the panel. */
   body[data-active-tab="rlhf"] .group-method {
@@ -358,6 +375,9 @@
   }
   body[data-active-tab="pg"] .group-method {
     background: rgba(211,94,127,0.08); border-left-color: var(--pg);
+  }
+  body[data-active-tab="ppo"] .group-method {
+    background: rgba(160,82,45,0.08); border-left-color: var(--ppo);
   }
   body[data-active-tab="grpo"] .group-method {
     background: rgba(192,57,43,0.07); border-left-color: var(--pi);
@@ -378,8 +398,8 @@
 
 <header class="masthead">
   <div class="eyebrow">Interactive · Alignment for RL on Language Models</div>
-  <h1>The Geometry of Alignment — <em>RLHF, GRPO, DPO, and DRO, in one dimension.</em></h1>
-  <p class="lede">A one-dimensional toy of RLHF. The "language model" is a Gaussian policy $\pi_\theta$, the human-preferred behavior is a reward landscape $r(a)$, and a reference model $\pi_{\mathrm{ref}}$ anchors the optimization through a KL penalty. Drag the policy around. Watch the KL-regularized optimum $\pi^\star$ emerge as you change&nbsp;$\beta$. Then compare five routes to that same optimum: the exact RLHF gradient, vanilla policy gradient (PG), GRPO (clipped, group-normalized), DPO (logistic loss on preference pairs), and DRO (a regression on a learned baseline).</p>
+  <h1>The Geometry of Alignment — <em>RLHF, PPO, GRPO, DPO, and DRO, in one dimension.</em></h1>
+  <p class="lede">A one-dimensional toy of RLHF. The "language model" is a Gaussian policy $\pi_\theta$, the human-preferred behavior is a reward landscape $r(a)$, and a reference model $\pi_{\mathrm{ref}}$ anchors the optimization through a KL penalty. Drag the policy around. Watch the KL-regularized optimum $\pi^\star$ emerge as you change&nbsp;$\beta$. Then compare six routes to that same optimum: the exact RLHF gradient, vanilla policy gradient (PG), PPO (clipped, value-baseline), GRPO (clipped, group-normalized), DPO (logistic loss on preference pairs), and DRO (a regression on a learned baseline).</p>
 </header>
 
 <details class="model-spec" id="modelSpec">
@@ -521,6 +541,39 @@
   </div>
 </div>
 
+<div class="controls tab-ppo">
+  <h3>PPO</h3>
+  <div class="ctrl-eq">
+    $\mathcal{L}_{\mathrm{PPO}} = \tfrac{1}{N}\sum_i \min(\rho_i\hat A_i, \mathrm{clip}(\rho_i)\hat A_i) - \beta\,\mathrm{KL}$
+  </div>
+  <div class="control">
+    <label>Batch $N$ <span class="val" id="val-NPPO">16</span></label>
+    <input type="range" id="NPPO" min="2" max="128" step="1" value="16" />
+    <span class="hint">Samples drawn from a frozen $\pi_{\mathrm{old}}$; reused until you Resample. Advantages use a learned scalar baseline $V$, not a group mean.</span>
+  </div>
+  <div class="control">
+    <label>Clip $\varepsilon$ <span class="val" id="val-epsPPO">0.20</span></label>
+    <input type="range" id="epsPPO" min="0.02" max="0.5" step="0.01" value="0.2" />
+  </div>
+  <div class="control">
+    <label>$\eta_\theta$ (policy) <span class="val" id="val-lrPPO">0.05</span></label>
+    <input type="range" id="lrPPO" min="0.005" max="0.3" step="0.005" value="0.05" />
+  </div>
+  <div class="control">
+    <label>$\eta_V$ (baseline) <span class="val" id="val-lrPPOv">0.20</span></label>
+    <input type="range" id="lrPPOv" min="0.005" max="1" step="0.005" value="0.2" />
+  </div>
+  <div class="control">
+    <label>Baseline $V$ <span class="val" id="val-Vppo">0.000</span></label>
+    <span class="hint"><em>Learned</em>: each Step nudges $V$ toward $\bar r$ via $V \leftarrow V + \eta_V(\bar r - V)$. Tracks $\mathbb{E}_{\pi_{\mathrm{old}}}[r]$.</span>
+  </div>
+  <div class="btn-row three">
+    <button class="btn" onclick="ppoResample()">Resample</button>
+    <button class="btn" onclick="ppoStep()">Step</button>
+    <button class="btn primary" id="btnPlayPPO" onclick="togglePlayPPO()">▶ Play</button>
+  </div>
+</div>
+
 <div class="controls tab-grpo">
   <h3>GRPO</h3>
   <div class="control">
@@ -582,15 +635,15 @@
     <input type="range" id="cmpSteps" min="20" max="300" step="10" value="80" />
   </div>
   <div class="control">
-    <label>Sample budget &times;<span class="val" id="val-cmpScale">1.00</span> <span class="light" id="val-cmpCounts">· PG 16 · GRPO 8 · DPO 32 · DRO 32</span></label>
+    <label>Sample budget &times;<span class="val" id="val-cmpScale">1.00</span> <span class="light" id="val-cmpCounts">· PG 16 · PPO 16 · GRPO 8 · DPO 32 · DRO 32</span></label>
     <input type="range" id="cmpScale" min="0.125" max="8" step="0.125" value="1" />
-    <span class="hint">Proportional knob on the sample count used by every sampled / offline algorithm. $1\times$ uses the per-tab defaults (PG $N$, GRPO $G$, DPO $N$ pairs, DRO $N$); larger values mean lower variance, smaller values mean noisier trajectories. The exact gradient is analytic and unaffected.</span>
+    <span class="hint">Proportional knob on the sample count used by every sampled / offline algorithm. $1\times$ uses the per-tab defaults (PG $N$, PPO $N$, GRPO $G$, DPO $N$ pairs, DRO $N$); larger values mean lower variance, smaller values mean noisier trajectories. The exact gradient is analytic and unaffected.</span>
   </div>
   <div class="btn-row">
     <button class="btn primary" onclick="compareRunAll()">▶ Run all</button>
     <button class="btn" onclick="clearTraj()">Clear</button>
   </div>
-  <span class="hint">Trajectories overlay on the landscape: <span class="t-exact">blue</span> = exact, <span class="t-pg">rose</span> = PG, <span class="t-pi">red</span> = GRPO, <span class="t-dpo">purple</span> = DPO, <span class="t-dro">teal</span> = DRO.</span>
+  <span class="hint">Trajectories overlay on the landscape: <span class="t-exact">blue</span> = exact, <span class="t-pg">rose</span> = PG, <span class="t-ppo">brown</span> = PPO, <span class="t-pi">red</span> = GRPO, <span class="t-dpo">purple</span> = DPO, <span class="t-dro">teal</span> = DRO.</span>
 </div>
 
 <div class="controls tab-dro">
@@ -674,11 +727,12 @@
      model; the tabs swap in method-specific content + sidebar controls.
      ============================================================ -->
 <div class="prose" style="margin: 24px 0 -4px; font-size: 14px; max-width: none;">
-  <p><strong>Five algorithms, one landscape.</strong> Click any tab below to swap the bottom half of the page — including the sidebar's <em>method hyperparameters</em> — to that algorithm. Each tab tells the same story (the policy climbs toward <span class="t-star">$\pi^\star$</span>) but with a different gradient estimator: an idealized analytic gradient, a vanilla sampled gradient, a clipped group-relative variant, a preference-only logistic loss, or a regression on a learned baseline. The last tab, <em>Compare</em>, runs all five from the same starting point and overlays their trajectories on a single map.</p>
+  <p><strong>Six algorithms, one landscape.</strong> Click any tab below to swap the bottom half of the page — including the sidebar's <em>method hyperparameters</em> — to that algorithm. Each tab tells the same story (the policy climbs toward <span class="t-star">$\pi^\star$</span>) but with a different gradient estimator: an idealized analytic gradient, a vanilla sampled gradient, a clipped surrogate with a learned baseline, a clipped group-relative variant, a preference-only logistic loss, or a regression on a learned baseline. The last tab, <em>Compare</em>, runs all six from the same starting point and overlays their trajectories on a single map.</p>
 </div>
 <div class="tabs" role="tablist">
   <button class="tab-btn active" role="tab" data-target="rlhf" onclick="setTab('rlhf')">RLHF · exact</button>
   <button class="tab-btn"        role="tab" data-target="pg"   onclick="setTab('pg')">PG</button>
+  <button class="tab-btn"        role="tab" data-target="ppo"  onclick="setTab('ppo')">PPO</button>
   <button class="tab-btn"        role="tab" data-target="grpo" onclick="setTab('grpo')">GRPO</button>
   <button class="tab-btn"        role="tab" data-target="dpo"  onclick="setTab('dpo')">DPO</button>
   <button class="tab-btn"        role="tab" data-target="dro"  onclick="setTab('dro')">DRO</button>
@@ -733,6 +787,50 @@
   </div>
 </div>
 
+<!-- ─── PPO tab ─── -->
+<div class="tab-ppo">
+  <h2 class="section" style="margin-top:0;"><span class="num">03</span>PPO — clipped updates with a learned baseline</h2>
+  <div class="prose" style="margin-bottom: 14px;">
+    <p>PPO (Schulman et al., 2017) is the clipped surrogate that GRPO inherits. From a frozen $\pi_{\mathrm{old}}$ draw a batch of $N$ samples, score them, form per-sample advantages $\hat A_i = r_i - V$ against a <em>learned</em> scalar baseline $V$, and maximize the clipped objective</p>
+    <p style="text-align:center;">$$\mathcal{L}_{\mathrm{PPO}}(\theta) \;=\; \frac{1}{N}\sum_{i=1}^{N} \min\!\Big(\rho_i\,\hat A_i,\ \mathrm{clip}(\rho_i,\,1{-}\varepsilon,\,1{+}\varepsilon)\,\hat A_i\Big) \;-\; \beta\,\mathrm{KL}\!\left(\pi_\theta \,\Vert\, \pi_{\mathrm{ref}}\right),$$</p>
+    <p>with $\rho_i = \pi_\theta(a_i)/\pi_{\mathrm{old}}(a_i)$. The baseline $V$ is trained jointly via $V \leftarrow V + \eta_V(\bar r - V)$ — gradient descent on $\tfrac{1}{2}(\bar r - V)^2$. Compared to <span class="t-pg">PG</span>: PPO adds importance ratios and clipping, and replaces the in-batch mean with a learned scalar. Compared to <span class="t-pi">GRPO</span>: the only difference is that GRPO uses the in-batch mean as the baseline <em>and</em> divides the advantage by the in-batch standard deviation.</p>
+  </div>
+
+  <div class="row two">
+    <div class="panel">
+      <div class="panel-title">A batch of $N$ samples</div>
+      <div class="panel-eq">$a_1,\,\ldots,\,a_N \,\sim\, \pi_{\mathrm{old}}$ &nbsp;·&nbsp; marker shade $\propto r(a_i)$ &nbsp;·&nbsp; dashed = current $\mu_\theta$</div>
+      <div id="plot-ppoSamples" class="plot" style="height: 230px;"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Per-sample advantage</div>
+      <div class="panel-eq">$\hat A_i \;=\; r_i \,-\, V$, &nbsp; with learned scalar baseline $V$</div>
+      <div id="plot-ppoAdv" class="plot" style="height: 230px;"></div>
+    </div>
+  </div>
+  <div class="row two">
+    <div class="panel">
+      <div class="panel-title">Importance ratio</div>
+      <div class="panel-eq">$\rho_i \;=\; \dfrac{\pi_\theta(a_i)}{\pi_{\mathrm{old}}(a_i)}$ &nbsp;·&nbsp; dashed band $= [\,1{-}\varepsilon,\, 1{+}\varepsilon\,]$ &nbsp;·&nbsp; grey = clipped (zero gradient)</div>
+      <div id="plot-ppoRatio" class="plot" style="height: 230px;"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Per-sample surrogate contribution</div>
+      <div class="panel-eq">$\min\!\big(\rho_i\,\hat A_i,\ \mathrm{clip}(\rho_i,\,1{-}\varepsilon,\,1{+}\varepsilon)\,\hat A_i\big)$</div>
+      <div id="plot-ppoSurr" class="plot" style="height: 230px;"></div>
+    </div>
+  </div>
+
+  <h2 class="section"><span class="num">04</span>PPO vs. PG vs. exact gradient — clipping tames the variance</h2>
+  <div class="panel">
+    <div class="panel-title">Trajectories on the objective surface <span class="light">· <span class="t-ppo">brown = PPO</span> · <span class="t-pg">rose = PG</span> · <span class="t-exact">blue = exact $\nabla_{\!\theta} J$</span></span></div>
+    <div id="plot-trajPPOplot" class="plot" style="height: 440px;"></div>
+    <div class="prose" style="margin-top: 14px;">
+      <p>Blue is the analytic gradient field; rose is plain PG; brown is PPO with the current $N$, $\varepsilon$, and learned $V$. Tightening $\varepsilon$ shortens each step but reduces variance; loosening it lets PPO approach PG. GRPO (next tab) replaces $V$ with the in-batch mean and divides $\hat A_i$ by the in-batch std — the only differences from PPO.</p>
+    </div>
+  </div>
+</div>
+
 <!-- ─── GRPO tab ─── -->
 <div class="tab-grpo">
   <h2 class="section" style="margin-top:0;"><span class="num">03</span>GRPO — one step, in slow motion</h2>
@@ -769,10 +867,10 @@
 
   <h2 class="section"><span class="num">04</span>GRPO vs. exact gradient — same landscape, different paths</h2>
   <div class="panel">
-    <div class="panel-title">Trajectories on the objective surface <span class="light">· <span class="t-pi">red dotted = GRPO</span> · <span class="t-pg">rose dashed = PG</span> · <span class="t-exact">blue = exact $\nabla_{\!\theta} J$</span></span></div>
+    <div class="panel-title">Trajectories on the objective surface <span class="light">· <span class="t-pi">red dotted = GRPO</span> · <span class="t-ppo">brown = PPO</span> · <span class="t-pg">rose dashed = PG</span> · <span class="t-exact">blue = exact $\nabla_{\!\theta} J$</span></span></div>
     <div id="plot-trajectories" class="plot" style="height: 440px;"></div>
     <div class="prose" style="margin-top: 14px;">
-      <p>Run all three <em>Play</em> buttons. The blue path is the analytic limit; the rose path is plain PG (REINFORCE with the in-batch mean baseline); the red dotted path is GRPO with the current $G$, $\varepsilon$, and group-normalized advantages. PG and GRPO are both Monte-Carlo estimates of the same gradient — GRPO adds importance ratios, clipping, and std-normalization on top.</p>
+      <p>Run the <em>Play</em> buttons across tabs. The blue path is the analytic limit; rose is plain PG (REINFORCE with an in-batch mean baseline); brown is PPO (the same clipped surrogate as GRPO, but with a learned scalar baseline $V$ instead of the group mean); red dotted is GRPO with the current $G$, $\varepsilon$, and group-normalized advantages. PG, PPO, and GRPO are three Monte-Carlo estimates of the same gradient — PPO adds importance ratios and clipping on top of PG; GRPO additionally normalizes the advantage by the in-batch standard deviation.</p>
     </div>
   </div>
 </div>
@@ -855,16 +953,16 @@
   <h2 class="section" style="margin-top:0;"><span class="num">03</span>Compare — five trajectories, one landscape</h2>
   <div class="prose" style="margin-bottom: 14px; max-width: none;">
     <p>Everything we've seen so far, one map. Press <strong>Run all</strong> in the sidebar to launch each algorithm from the <em>same</em> initial point $(\mu_\theta,\sigma_\theta)$ — the current red dot — with hardcoded default hyperparameters (so the comparison is fair regardless of how you've tweaked the sliders in other tabs). Each algorithm runs for the chosen number of steps; the trajectories are then drawn on top of the shared objective surface.</p>
-    <p style="font-size: 14px;">A few things to look for: (1) the <span class="t-exact">blue</span> exact path is deterministic; everything else is a Monte-Carlo run, so re-running gives different but qualitatively similar traces. (2) <span class="t-pg">PG</span> and <span class="t-pi">GRPO</span> hug the analytic gradient field with sampling noise. (3) <span class="t-dpo">DPO</span> and <span class="t-dro">DRO</span> minimize <em>different</em> losses — they don't see $J$ directly — yet their paths still climb toward the same $\pi^\star$, often through different intermediate $(\mu,\sigma)$ regions. (4) Switch the reward preset to <em>Two bumps</em> and re-run: the sampling-based methods are more sensitive to which basin they get pulled into early on.</p>
+    <p style="font-size: 14px;">A few things to look for: (1) the <span class="t-exact">blue</span> exact path is deterministic; everything else is a Monte-Carlo run, so re-running gives different but qualitatively similar traces. (2) <span class="t-pg">PG</span>, <span class="t-ppo">PPO</span>, and <span class="t-pi">GRPO</span> hug the analytic gradient field with sampling noise — PPO and GRPO clip the step, GRPO additionally divides the advantage by the in-batch std. (3) <span class="t-dpo">DPO</span> and <span class="t-dro">DRO</span> minimize <em>different</em> losses — they don't see $J$ directly — yet their paths still climb toward the same $\pi^\star$, often through different intermediate $(\mu,\sigma)$ regions. (4) Switch the reward preset to <em>Two bumps</em> and re-run: the sampling-based methods are more sensitive to which basin they get pulled into early on.</p>
   </div>
   <div class="panel">
-    <div class="panel-title">All five trajectories on the objective surface <span class="light">· <span class="t-exact">blue = exact $\nabla_{\!\theta} J$</span> · <span class="t-pg">rose = PG</span> · <span class="t-pi">red = GRPO</span> · <span class="t-dpo">purple = DPO</span> · <span class="t-dro">teal = DRO</span></span></div>
+    <div class="panel-title">All six trajectories on the objective surface <span class="light">· click to toggle: <button type="button" class="cmp-toggle t-exact" data-algo="exact">blue = exact $\nabla_{\!\theta} J$</button> · <button type="button" class="cmp-toggle t-pg" data-algo="pg">rose = PG</button> · <button type="button" class="cmp-toggle t-ppo" data-algo="ppo">brown = PPO</button> · <button type="button" class="cmp-toggle t-pi" data-algo="grpo">red = GRPO</button> · <button type="button" class="cmp-toggle t-dpo" data-algo="dpo">purple = DPO</button> · <button type="button" class="cmp-toggle t-dro" data-algo="dro">teal = DRO</button></span></div>
     <div id="plot-trajCompare" class="plot" style="height: 540px;"></div>
   </div>
 </div>
 
 <footer>
-  <div>A pedagogical playground for the geometry of RLHF, PG, GRPO, DPO, and DRO — built with Claude. Open the source to tinker with the math.</div>
+  <div>A pedagogical playground for the geometry of RLHF, PG, PPO, GRPO, DPO, and DRO — built with Claude. Open the source to tinker with the math.</div>
 </footer>
 
 </div><!-- /main-content -->
@@ -885,6 +983,8 @@ const S = {
   lrExact: 0.1,
   // PG hyperparameters
   NPG: 16, lrPG: 0.05,
+  // PPO hyperparameters + learned scalar baseline V
+  NPPO: 16, epsPPO: 0.2, lrPPO: 0.05, lrPPOv: 0.2, Vppo: 0,
   G: 8, eps: 0.2, lrG: 0.05,
   // DPO hyperparameters
   betaDPO: 0.5, N: 32, lrDPO: 0.05, prefNoise: 0.5,
@@ -892,6 +992,8 @@ const S = {
   betaDRO: 0.5, NDRO: 32, lrDROth: 0.05, lrDROv: 0.1, Vdro: 0,
   // PG snapshot: fresh samples each step from current π_θ
   pg:   { samples: [], rewards: [], advs: [] },
+  // PPO snapshot: samples drawn from frozen π_old; reused until Resample
+  ppo:  { piOldMu: 0, piOldSig: 1.0, samples: [], rewards: [], advs: [], ratios: [], surr: [] },
   // GRPO snapshot
   grpo: { piOldMu: 0, piOldSig: 1.0, samples: [], rewards: [], advs: [], ratios: [], surr: [] },
   // DPO snapshot: pairs = [{aw, al, dr}], margins[i] = h_i at current θ
@@ -901,15 +1003,20 @@ const S = {
   // Trajectories on the landscape
   trajExact: [],
   trajPG:    [],
+  trajPPO:   [],
   trajGRPO:  [],
   trajDPO:   [],
   trajDRO:   [],
   trajVdro:  [],
   playExact: null,
   playPG:    null,
+  playPPO:   null,
   playG:     null,
   playDPO:   null,
   playDRO:   null,
+  // Per-algorithm visibility on the Compare tab. Toggled by the
+  // clickable legend in the panel title; drives the `paths` flags.
+  compareVisible: { exact:true, pg:true, ppo:true, grpo:true, dpo:true, dro:true },
 };
 
 /* ============================================================
@@ -1118,6 +1225,79 @@ function grpoStep() {
 }
 
 /* ============================================================
+   PPO — clipped surrogate with a learned scalar baseline V.
+   Samples are drawn from a frozen π_old at Resample time and
+   reused until the next Resample. Advantage is r_i - V (no
+   group-std normalization, unlike GRPO).
+     L_PPO = (1/N) Σ min(ρ_i A_i, clip(ρ_i, 1±ε) A_i)  - β KL
+     V    ← V + η_V · (r̄ - V)         (gradient descent on (r̄-V)²/2)
+   ============================================================ */
+function ppoResample() {
+  S.ppo.piOldMu  = S.muTh;
+  S.ppo.piOldSig = S.sigTh;
+  const N = S.NPPO;
+  S.ppo.samples = new Array(N);
+  S.ppo.rewards = new Array(N);
+  for (let i = 0; i < N; i++) {
+    const a = S.muTh + S.sigTh * randn();
+    S.ppo.samples[i] = a;
+    S.ppo.rewards[i] = reward(a);
+  }
+  recomputePPOQuantities();
+  renderPPOPanels();
+}
+
+function recomputePPOQuantities() {
+  const N = S.ppo.samples.length;
+  if (N === 0) return;
+  S.ppo.advs = S.ppo.rewards.map(r => r - S.Vppo);
+  S.ppo.ratios = S.ppo.samples.map(a =>
+    Math.exp(logGauss(a, S.muTh, S.sigTh) - logGauss(a, S.ppo.piOldMu, S.ppo.piOldSig))
+  );
+  const eps = S.epsPPO;
+  S.ppo.surr = S.ppo.ratios.map((rho, i) => {
+    const A = S.ppo.advs[i];
+    const clipped = Math.max(1-eps, Math.min(1+eps, rho));
+    return Math.min(rho * A, clipped * A);
+  });
+}
+
+function ppoStep() {
+  if (S.ppo.samples.length === 0) ppoResample();
+  recomputePPOQuantities();
+  const N = S.ppo.samples.length;
+  const eps = S.epsPPO;
+  let gMu = 0, gSig = 0, rBar = 0;
+  for (let i = 0; i < N; i++) {
+    const a   = S.ppo.samples[i];
+    const A   = S.ppo.advs[i];
+    const rho = S.ppo.ratios[i];
+    rBar += S.ppo.rewards[i];
+    const isClippedAbove = (A > 0 && rho > 1+eps);
+    const isClippedBelow = (A < 0 && rho < 1-eps);
+    if (isClippedAbove || isClippedBelow) continue;
+    const dlogMu  = (a - S.muTh)/(S.sigTh*S.sigTh);
+    const dlogSig = -1/S.sigTh + (a - S.muTh)*(a - S.muTh)/(S.sigTh*S.sigTh*S.sigTh);
+    gMu  += (1/N) * rho * A * dlogMu;
+    gSig += (1/N) * rho * A * dlogSig;
+  }
+  rBar /= N;
+  const [gkmu, gksig] = gradKL(S.muTh, S.sigTh);
+  gMu  -= S.beta * gkmu;
+  gSig -= S.beta * gksig;
+
+  S.trajPPO.push([S.muTh, S.sigTh]);
+  S.muTh  = clamp(S.muTh  + S.lrPPO * gMu,  -4, 4);
+  S.sigTh = clamp(S.sigTh + S.lrPPO * gSig, 0.03, 3);
+  S.Vppo  = clamp(S.Vppo + S.lrPPOv * (rBar - S.Vppo), -10, 10);
+
+  syncSliders();
+  document.getElementById('val-Vppo').textContent = S.Vppo.toFixed(3);
+  recomputePPOQuantities();
+  renderAll();
+}
+
+/* ============================================================
    EXACT-GRADIENT STEP (analytic)
    ============================================================ */
 function stepExact() {
@@ -1317,15 +1497,16 @@ function droStep() {
 }
 
 /* ============================================================
-   COMPARE — run all five algorithms from the same starting
+   COMPARE — run all six algorithms from the same starting
    (mu_th, sig_th) with hardcoded default hyperparameters,
    record their trajectories, and restore the policy to start.
-   The actual rendering uses renderLandscape with all five
+   The actual rendering uses renderLandscape with all six
    path flags enabled (see the "compare" branch of renderAll).
    ============================================================ */
 const COMPARE_DEFAULTS = {
   lrExact: 0.1,
   NPG: 16, lrPG: 0.05,
+  NPPO: 16, epsPPO: 0.2, lrPPO: 0.05, lrPPOv: 0.2,
   G: 8, eps: 0.2, lrG: 0.05,
   betaDPO: 0.5, N: 32, lrDPO: 0.05, prefNoise: 0.5,
   betaDRO: 0.5, NDRO: 32, lrDROth: 0.05, lrDROv: 0.1,
@@ -1340,6 +1521,7 @@ function compareRunAll() {
   // unbiased-std denominator; DPO needs >=1 pair; others just need >=1.
   const D = Object.assign({}, COMPARE_DEFAULTS, {
     NPG:  Math.max(2, Math.round(COMPARE_DEFAULTS.NPG  * scale)),
+    NPPO: Math.max(2, Math.round(COMPARE_DEFAULTS.NPPO * scale)),
     G:    Math.max(2, Math.round(COMPARE_DEFAULTS.G    * scale)),
     N:    Math.max(1, Math.round(COMPARE_DEFAULTS.N    * scale)),
     NDRO: Math.max(2, Math.round(COMPARE_DEFAULTS.NDRO * scale)),
@@ -1347,7 +1529,7 @@ function compareRunAll() {
   const beta = S.beta;             // KL temperature is shared with the toy model
   const muR  = S.muRef, sigR = S.sigRef;
 
-  S.trajExact = []; S.trajPG = []; S.trajGRPO = []; S.trajDPO = []; S.trajDRO = []; S.trajVdro = [];
+  S.trajExact = []; S.trajPG = []; S.trajPPO = []; S.trajGRPO = []; S.trajDPO = []; S.trajDRO = []; S.trajVdro = [];
 
   // 1) Exact gradient — deterministic
   let mu = muStart, sig = sigStart;
@@ -1385,7 +1567,43 @@ function compareRunAll() {
   }
   S.trajPG.push([mu, sig]);
 
-  // 3) GRPO — clipped, group-normalized; pi_old refreshes each step
+  // 3) PPO — clipped surrogate with a learned scalar baseline V;
+  //         π_old refreshes each step (same cadence as GRPO).
+  mu = muStart; sig = sigStart;
+  let Vppo = 0;
+  for (let i = 0; i < numSteps; i++) {
+    S.trajPPO.push([mu, sig]);
+    const piOldMu = mu, piOldSig = sig;
+    const samples = new Array(D.NPPO), rewards = new Array(D.NPPO);
+    let rmean = 0;
+    for (let k = 0; k < D.NPPO; k++) {
+      samples[k] = piOldMu + piOldSig*randn();
+      rewards[k] = reward(samples[k]);
+      rmean += rewards[k];
+    }
+    rmean /= D.NPPO;
+    const sig2 = sig*sig, sig3 = sig2*sig;
+    let gMu = 0, gSig = 0;
+    for (let k = 0; k < D.NPPO; k++) {
+      const a = samples[k];
+      const A = rewards[k] - Vppo;
+      const rho = Math.exp(logGauss(a, mu, sig) - logGauss(a, piOldMu, piOldSig));
+      const isClippedAbove = (A > 0 && rho > 1+D.epsPPO);
+      const isClippedBelow = (A < 0 && rho < 1-D.epsPPO);
+      if (isClippedAbove || isClippedBelow) continue;
+      gMu  += (1/D.NPPO) * rho * A * ((a - mu) / sig2);
+      gSig += (1/D.NPPO) * rho * A * (-1/sig + (a - mu)*(a - mu) / sig3);
+    }
+    const [gkmu, gksig] = gradKLAt(mu, sig, muR, sigR);
+    gMu  -= beta * gkmu;
+    gSig -= beta * gksig;
+    mu   = clamp(mu  + D.lrPPO * gMu,  -4, 4);
+    sig  = clamp(sig + D.lrPPO * gSig, 0.03, 3);
+    Vppo = clamp(Vppo + D.lrPPOv * (rmean - Vppo), -10, 10);
+  }
+  S.trajPPO.push([mu, sig]);
+
+  // 4) GRPO — clipped, group-normalized; pi_old refreshes each step
   mu = muStart; sig = sigStart;
   for (let i = 0; i < numSteps; i++) {
     S.trajGRPO.push([mu, sig]);
@@ -1421,7 +1639,7 @@ function compareRunAll() {
   }
   S.trajGRPO.push([mu, sig]);
 
-  // 4) DPO — preference pairs sampled once from pi_ref, then re-used
+  // 5) DPO — preference pairs sampled once from pi_ref, then re-used
   mu = muStart; sig = sigStart;
   const pairs = [];
   for (let k = 0; k < D.N; k++) {
@@ -1458,7 +1676,7 @@ function compareRunAll() {
   }
   S.trajDPO.push([mu, sig]);
 
-  // 5) DRO — offline (a_i ~ pi_ref), jointly fit theta and V
+  // 6) DRO — offline (a_i ~ pi_ref), jointly fit theta and V
   mu = muStart; sig = sigStart;
   let Vlocal = 0;  // start V at 0, independent of S.Vdro
   const droSamples = [], droRewards = [];
@@ -1508,7 +1726,7 @@ function gradKLAt(mu, sig, muR, sigR) {
    ============================================================ */
 function clamp(x, a, b) { return Math.max(a, Math.min(b, x)); }
 function fmt(x, d=3) { return (x>=0?" ":"") + x.toFixed(d); }
-function clearTraj() { S.trajExact = []; S.trajPG = []; S.trajGRPO = []; S.trajDPO = []; S.trajDRO = []; S.trajVdro = []; renderAll(); }
+function clearTraj() { S.trajExact = []; S.trajPG = []; S.trajPPO = []; S.trajGRPO = []; S.trajDPO = []; S.trajDRO = []; S.trajVdro = []; renderAll(); }
 function syncSliders() {
   document.getElementById('mu').value  = S.muTh;
   document.getElementById('sig').value = S.sigTh;
@@ -1573,7 +1791,7 @@ function computeLandscape() {
 }
 
 function renderLandscape(starInfo, targetPlot="plot-landscape", showTraj=false,
-                        paths={exact:true, pg:false, grpo:true, dpo:false, dro:false},
+                        paths={exact:true, pg:false, ppo:false, grpo:true, dpo:false, dro:false},
                         cornerLegend=false) {
   const Z = computeLandscape();
   const traces = [
@@ -1608,6 +1826,12 @@ function renderLandscape(starInfo, targetPlot="plot-landscape", showTraj=false,
       const ys = S.trajPG.map(p=>p[1]).concat([S.sigTh]);
       traces.push({ x: xs, y: ys, mode: "lines+markers", name: "PG path",
         line: { color: "#d35e7f", width: 2, dash: "dash" }, marker: { size: 4, color: "#d35e7f" } });
+    }
+    if (paths.ppo && S.trajPPO.length > 0) {
+      const xs = S.trajPPO.map(p=>p[0]).concat([S.muTh]);
+      const ys = S.trajPPO.map(p=>p[1]).concat([S.sigTh]);
+      traces.push({ x: xs, y: ys, mode: "lines+markers", name: "PPO path",
+        line: { color: "#a0522d", width: 2, dash: "dashdot" }, marker: { size: 4, color: "#a0522d" } });
     }
     if (paths.grpo && S.trajGRPO.length > 0) {
       const xs = S.trajGRPO.map(p=>p[0]).concat([S.muTh]);
@@ -1741,6 +1965,108 @@ function renderGRPOPanels() {
   ], {
     margin:{l:46,r:10,t:6,b:30},
     xaxis:{ title:"sample index&nbsp; <i>i</i>", dtick: Math.max(1, Math.ceil(G/12)), zeroline:false, gridcolor:"#eee" },
+    yaxis:{ title:"min(ρ<sub>i</sub>Â<sub>i</sub>, clip·Â<sub>i</sub>)", zeroline:true, zerolinecolor:"#999", gridcolor:"#eee" },
+    plot_bgcolor:"#fff", paper_bgcolor:"#fff",
+    font:{family:"Inter Tight, sans-serif", size:11},
+  }, { displayModeBar:false, responsive:true });
+}
+
+/* ============================================================
+   PPO PANELS — mirror of the GRPO panels (samples, advantages,
+   importance ratios, clipped surrogate) but with r_i - V as the
+   advantage instead of group-normalized.
+   ============================================================ */
+function renderPPOPanels() {
+  const N = S.ppo.samples.length;
+  const emptyLayout = (msg) => ({
+    margin:{l:40,r:10,t:6,b:30},
+    annotations: msg ? [{text: msg, showarrow:false, x:0.5, y:0.5, xref:"paper", yref:"paper", font:{color:"#999"}}] : undefined,
+    xaxis:{visible:false}, yaxis:{visible:false}, plot_bgcolor:"#fff", paper_bgcolor:"#fff",
+  });
+  if (N === 0) {
+    Plotly.react("plot-ppoSamples", [], emptyLayout("press Resample in the left sidebar to begin"), { displayModeBar:false, responsive:true });
+    Plotly.react("plot-ppoAdv",     [], emptyLayout(), { displayModeBar:false, responsive:true });
+    Plotly.react("plot-ppoRatio",   [], emptyLayout(), { displayModeBar:false, responsive:true });
+    Plotly.react("plot-ppoSurr",    [], emptyLayout(), { displayModeBar:false, responsive:true });
+    return;
+  }
+  const piY    = A_GRID.map(a => gauss(a, S.muTh, S.sigTh));
+  const piOldY = A_GRID.map(a => gauss(a, S.ppo.piOldMu, S.ppo.piOldSig));
+  const rMin   = Math.min(...S.ppo.rewards);
+  const rMax   = Math.max(...S.ppo.rewards);
+  Plotly.react("plot-ppoSamples", [
+    { x: A_GRID, y: piOldY, mode:"lines", line:{color:"#999", dash:"dot", width:1.5}, name:"π<sub>old</sub>", yaxis:"y2", hoverinfo:"skip" },
+    { x: A_GRID, y: piY,    mode:"lines", line:{color:"#c0392b", width:2}, name:"π<sub>θ</sub>", yaxis:"y2", hoverinfo:"skip" },
+    { x: S.ppo.samples, y: S.ppo.samples.map(() => 0), mode:"markers", name:"samples",
+      marker: {
+        size: 14, color: S.ppo.rewards,
+        colorscale: [[0,"#d8d4c8"],[1,"#a0522d"]],
+        cmin: rMin, cmax: rMax,
+        line: { color: "white", width: 1.5 },
+      },
+      hovertemplate: "a=%{x:.2f}<br>r=%{marker.color:.3f}<extra></extra>",
+      yaxis: "y" },
+    { x: [S.muTh, S.muTh], y: [-0.5, 0.5], mode:"lines",
+      line:{color:"#c0392b", width:1.5, dash:"dash"}, hoverinfo:"skip", showlegend: false },
+  ], {
+    margin:{l:40, r:46, t:6, b:30},
+    xaxis: { title: "action&nbsp; <i>a</i>", range:[A_MIN,A_MAX], gridcolor:"#eee", zeroline:false },
+    yaxis: { range:[-0.5, 0.5], showticklabels:false, zeroline:false, showgrid:false },
+    yaxis2:{ overlaying:"y", side:"right", showgrid:false, zeroline:false, showticklabels:false },
+    showlegend: false,
+    plot_bgcolor:"#fff", paper_bgcolor:"#fff",
+    font:{family:"Inter Tight, sans-serif", size:11},
+  }, { displayModeBar:false, responsive:true });
+
+  const advColors = S.ppo.advs.map(a => a >= 0 ? "#2a8e4a" : "#c0392b");
+  const idx = Array.from({length:N}, (_,i)=>i+1);
+  Plotly.react("plot-ppoAdv", [
+    { x: [0.5, N+0.5], y: [0, 0], mode:"lines", line:{color:"#999", width:0.8}, hoverinfo:"skip", showlegend:false },
+    { x: idx, y: S.ppo.advs, type:"bar", marker:{color: advColors}, name:"Â",
+      hovertemplate: `i=%{x}<br>Â<sub>i</sub>=r<sub>i</sub>−V=%{y:.3f}<extra></extra>`,
+      showlegend:false },
+  ], {
+    margin:{l:46,r:10,t:6,b:30},
+    xaxis:{ title:`sample index&nbsp; <i>i</i>&nbsp;&nbsp;·&nbsp;&nbsp;V = ${S.Vppo.toFixed(3)}`,
+            dtick: Math.max(1, Math.ceil(N/12)), zeroline:false, gridcolor:"#eee" },
+    yaxis:{ title:"Â<sub>i</sub> = r<sub>i</sub> − V", zeroline:true, zerolinecolor:"#999", gridcolor:"#eee" },
+    plot_bgcolor:"#fff", paper_bgcolor:"#fff",
+    font:{family:"Inter Tight, sans-serif", size:11},
+  }, { displayModeBar:false, responsive:true });
+
+  const eps = S.epsPPO;
+  Plotly.react("plot-ppoRatio", [
+    { x: [0.5, N+0.5], y: [1+eps,1+eps], mode:"lines", line:{color:"#999", dash:"dash", width:1}, hoverinfo:"skip", showlegend:false },
+    { x: [0.5, N+0.5], y: [1-eps,1-eps], mode:"lines", line:{color:"#999", dash:"dash", width:1}, hoverinfo:"skip", showlegend:false },
+    { x: [0.5, N+0.5], y: [1, 1], mode:"lines", line:{color:"#999", width:0.7}, hoverinfo:"skip", showlegend:false },
+    { x: idx, y: S.ppo.ratios, mode:"markers",
+      marker: {
+        size: 10,
+        color: S.ppo.ratios.map((rho,i) => {
+          const A = S.ppo.advs[i];
+          const clipped = (A>0 && rho>1+eps) || (A<0 && rho<1-eps);
+          return clipped ? "#999" : (A>=0 ? "#2a8e4a" : "#c0392b");
+        }),
+        line:{color:"white", width:1}
+      },
+      hovertemplate: "i=%{x}<br>ρ=%{y:.3f}<extra></extra>",
+      showlegend:false }
+  ], {
+    margin:{l:46,r:10,t:6,b:30},
+    xaxis:{ title:"sample index&nbsp; <i>i</i>", range:[0.5, N+0.5], dtick: Math.max(1, Math.ceil(N/12)), zeroline:false, gridcolor:"#eee" },
+    yaxis:{ title:"ρ<sub>i</sub>", gridcolor:"#eee", zeroline:false },
+    plot_bgcolor:"#fff", paper_bgcolor:"#fff",
+    font:{family:"Inter Tight, sans-serif", size:11},
+  }, { displayModeBar:false, responsive:true });
+
+  Plotly.react("plot-ppoSurr", [
+    { x: idx, y: S.ppo.surr, type:"bar",
+      marker:{color: S.ppo.surr.map(v => v >= 0 ? "#2a8e4a" : "#c0392b")},
+      hovertemplate: "i=%{x}<br>min(ρ<sub>i</sub>Â<sub>i</sub>, clip)=%{y:.3f}<extra></extra>",
+      showlegend:false }
+  ], {
+    margin:{l:46,r:10,t:6,b:30},
+    xaxis:{ title:"sample index&nbsp; <i>i</i>", dtick: Math.max(1, Math.ceil(N/12)), zeroline:false, gridcolor:"#eee" },
     yaxis:{ title:"min(ρ<sub>i</sub>Â<sub>i</sub>, clip·Â<sub>i</sub>)", zeroline:true, zerolinecolor:"#999", gridcolor:"#eee" },
     plot_bgcolor:"#fff", paper_bgcolor:"#fff",
     font:{family:"Inter Tight, sans-serif", size:11},
@@ -2088,26 +2414,30 @@ function renderAll() {
   // display:none container makes Plotly fall back to a 700-ish px width
   // and the SVG then overflows the panel when the tab becomes visible.
   if (tab === 'rlhf') {
-    renderLandscape(starInfo, "plot-trajRLHF", true, {exact:true, pg:false, grpo:false, dpo:false});
+    renderLandscape(starInfo, "plot-trajRLHF", true, {exact:true, pg:false, ppo:false, grpo:false, dpo:false});
   } else if (tab === 'pg') {
-    renderLandscape(starInfo, "plot-trajPG", true, {exact:true, pg:true, grpo:false, dpo:false});
+    renderLandscape(starInfo, "plot-trajPG", true, {exact:true, pg:true, ppo:false, grpo:false, dpo:false});
     recomputePGQuantities();
     renderPGPanels();
+  } else if (tab === 'ppo') {
+    renderLandscape(starInfo, "plot-trajPPOplot", true, {exact:true, pg:true, ppo:true, grpo:false, dpo:false});
+    recomputePPOQuantities();
+    renderPPOPanels();
   } else if (tab === 'grpo') {
-    renderLandscape(starInfo, "plot-trajectories", true, {exact:true, pg:true, grpo:true, dpo:false});
+    renderLandscape(starInfo, "plot-trajectories", true, {exact:true, pg:true, ppo:true, grpo:true, dpo:false});
     recomputeGRPOQuantities();
     renderGRPOPanels();
   } else if (tab === 'dpo') {
-    renderLandscape(starInfo, "plot-trajectoriesDPO", true, {exact:true, pg:false, grpo:true, dpo:true});
+    renderLandscape(starInfo, "plot-trajectoriesDPO", true, {exact:true, pg:false, ppo:false, grpo:true, dpo:true});
     recomputeDPOQuantities();
     renderDPOPanels();
   } else if (tab === 'dro') {
-    renderLandscape(starInfo, "plot-trajectoriesDRO", true, {exact:true, pg:false, grpo:false, dpo:true, dro:true});
+    renderLandscape(starInfo, "plot-trajectoriesDRO", true, {exact:true, pg:false, ppo:false, grpo:false, dpo:true, dro:true});
     recomputeDROQuantities();
     renderDROPanels();
   } else if (tab === 'compare') {
     renderLandscape(starInfo, "plot-trajCompare", true,
-                    {exact:true, pg:true, grpo:true, dpo:true, dro:true},
+                    S.compareVisible,
                     /* cornerLegend */ true);
   }
 }
@@ -2142,6 +2472,16 @@ function togglePlayPG() {
   } else {
     btn.textContent = "❚❚ Pause";
     S.playPG = setInterval(pgStep, 120);
+  }
+}
+function togglePlayPPO() {
+  const btn = document.getElementById('btnPlayPPO');
+  if (S.playPPO) {
+    clearInterval(S.playPPO); S.playPPO = null; btn.textContent = "▶ Play";
+  } else {
+    btn.textContent = "❚❚ Pause";
+    // PPO refreshes π_old each play frame, mirroring the GRPO play loop.
+    S.playPPO = setInterval(() => { ppoResample(); ppoStep(); }, 180);
   }
 }
 function togglePlayG() {
@@ -2179,7 +2519,7 @@ function togglePlayDRO() {
    ============================================================ */
 function resetPolicy() {
   S.muTh = 0; S.sigTh = 1.0;
-  S.trajExact = []; S.trajPG = []; S.trajGRPO = []; S.trajDPO = []; S.trajDRO = []; S.trajVdro = [];
+  S.trajExact = []; S.trajPG = []; S.trajPPO = []; S.trajGRPO = []; S.trajDPO = []; S.trajDRO = []; S.trajVdro = [];
   syncSliders();
   renderAll();
 }
@@ -2192,6 +2532,8 @@ function resetAll() {
     document.getElementById('btnPlayExact').textContent = "▶ Play"; }
   if (S.playPG)    { clearInterval(S.playPG);    S.playPG    = null;
     document.getElementById('btnPlayPG').textContent    = "▶ Play"; }
+  if (S.playPPO)   { clearInterval(S.playPPO);   S.playPPO   = null;
+    document.getElementById('btnPlayPPO').textContent   = "▶ Play"; }
   if (S.playG)     { clearInterval(S.playG);     S.playG     = null;
     document.getElementById('btnPlayG').textContent     = "▶ Play"; }
   if (S.playDPO)   { clearInterval(S.playDPO);   S.playDPO   = null;
@@ -2206,16 +2548,18 @@ function resetAll() {
   S.rewardPreset = "single";
   S.lrExact = 0.1;
   S.NPG = 16;    S.lrPG = 0.05;
+  S.NPPO = 16;   S.epsPPO = 0.2;  S.lrPPO = 0.05; S.lrPPOv = 0.2; S.Vppo = 0;
   S.G = 8;       S.eps = 0.2;     S.lrG = 0.05;
   S.betaDPO = 0.5; S.N = 32; S.lrDPO = 0.05; S.prefNoise = 0.5;
   S.betaDRO = 0.5; S.NDRO = 32; S.lrDROth = 0.05; S.lrDROv = 0.1; S.Vdro = 0;
 
   // Drop generated data and trajectories
   S.pg   = { samples: [], rewards: [], advs: [] };
+  S.ppo  = { piOldMu: 0, piOldSig: 1.0, samples: [], rewards: [], advs: [], ratios: [], surr: [] };
   S.grpo = { piOldMu: 0, piOldSig: 1.0, samples: [], rewards: [], advs: [], ratios: [], surr: [] };
   S.dpo  = { pairs: [], margins: [], selected: null };
   S.dro  = { samples: [], rewards: [], residuals: [], selected: null };
-  S.trajExact = []; S.trajPG = []; S.trajGRPO = []; S.trajDPO = []; S.trajDRO = []; S.trajVdro = [];
+  S.trajExact = []; S.trajPG = []; S.trajPPO = []; S.trajGRPO = []; S.trajDPO = []; S.trajDRO = []; S.trajVdro = [];
 
   // Push all S values back to the DOM controls
   const setSlider = (id, val, d) => {
@@ -2230,6 +2574,11 @@ function resetAll() {
   setSlider('lrExact',S.lrExact,3);
   setSlider('NPG',    S.NPG,    'i');
   setSlider('lrPG',   S.lrPG,   3);
+  setSlider('NPPO',   S.NPPO,   'i');
+  setSlider('epsPPO', S.epsPPO, 2);
+  setSlider('lrPPO',  S.lrPPO,  3);
+  setSlider('lrPPOv', S.lrPPOv, 3);
+  document.getElementById('val-Vppo').textContent = S.Vppo.toFixed(3);
   setSlider('G',      S.G,      'i');
   setSlider('eps',    S.eps,    2);
   setSlider('lrG',    S.lrG,    3);
@@ -2290,6 +2639,10 @@ document.addEventListener('DOMContentLoaded', () => {
   bindSlider('lrExact','lrExact',3);
   bindSlider('NPG',    'NPG',    0, () => { S.NPG = parseInt(S.NPG); });
   bindSlider('lrPG',   'lrPG',   3);
+  bindSlider('NPPO',   'NPPO',   0, () => { S.NPPO = parseInt(S.NPPO); });
+  bindSlider('epsPPO', 'epsPPO', 2);
+  bindSlider('lrPPO',  'lrPPO',  3);
+  bindSlider('lrPPOv', 'lrPPOv', 3);
   bindSlider('G',      'G',      0, () => { S.G = parseInt(S.G); });
   bindSlider('eps',    'eps',    2);
   bindSlider('lrG',    'lrG',    3);
@@ -2313,22 +2666,35 @@ document.addEventListener('DOMContentLoaded', () => {
   const updateCmpCounts = () => {
     const s = parseFloat(cmpScaleEl.value);
     const NPG  = Math.max(2, Math.round(COMPARE_DEFAULTS.NPG  * s));
+    const NPPO = Math.max(2, Math.round(COMPARE_DEFAULTS.NPPO * s));
     const G    = Math.max(2, Math.round(COMPARE_DEFAULTS.G    * s));
     const N    = Math.max(1, Math.round(COMPARE_DEFAULTS.N    * s));
     const NDRO = Math.max(2, Math.round(COMPARE_DEFAULTS.NDRO * s));
     cmpScaleVal.textContent = s.toFixed(2);
-    cmpCountsVal.textContent = `· PG ${NPG} · GRPO ${G} · DPO ${N} · DRO ${NDRO}`;
+    cmpCountsVal.textContent = `· PG ${NPG} · PPO ${NPPO} · GRPO ${G} · DPO ${N} · DRO ${NDRO}`;
   };
   cmpScaleEl.addEventListener('input', updateCmpCounts);
   updateCmpCounts();
 
+  // Compare-tab clickable legend toggles
+  document.querySelectorAll('.cmp-toggle').forEach(btn => {
+    const algo = btn.getAttribute('data-algo');
+    btn.classList.toggle('cmp-off', !S.compareVisible[algo]);
+    btn.addEventListener('click', () => {
+      S.compareVisible[algo] = !S.compareVisible[algo];
+      btn.classList.toggle('cmp-off', !S.compareVisible[algo]);
+      renderAll();
+    });
+  });
+
   document.getElementById('rewardPreset').addEventListener('change', (e) => {
     S.rewardPreset = e.target.value;
     S.pg.samples = []; S.pg.rewards = []; S.pg.advs = [];
+    S.ppo.samples = []; S.ppo.rewards = []; S.ppo.advs = []; S.ppo.ratios = []; S.ppo.surr = [];
     S.grpo.samples = []; S.grpo.rewards = []; S.grpo.advs = []; S.grpo.ratios = []; S.grpo.surr = [];
     S.dpo.pairs = []; S.dpo.margins = []; S.dpo.selected = null;
     S.dro.samples = []; S.dro.rewards = []; S.dro.residuals = []; S.dro.selected = null;
-    S.trajExact = []; S.trajPG = []; S.trajGRPO = []; S.trajDPO = []; S.trajDRO = []; S.trajVdro = [];
+    S.trajExact = []; S.trajPG = []; S.trajPPO = []; S.trajGRPO = []; S.trajDPO = []; S.trajDRO = []; S.trajVdro = [];
     renderAll();
   });
 
