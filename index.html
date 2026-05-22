@@ -585,8 +585,8 @@
     <input type="range" id="eps" min="0.02" max="0.5" step="0.01" value="0.2" />
   </div>
   <div class="control">
-    <label>Learning rate $\eta$ <span class="val" id="val-lrG">0.05</span></label>
-    <input type="range" id="lrG" min="0.005" max="0.3" step="0.005" value="0.05" />
+    <label>Learning rate $\eta$ <span class="val" id="val-lrG">0.03</span></label>
+    <input type="range" id="lrG" min="0.005" max="0.3" step="0.005" value="0.03" />
   </div>
   <div class="btn-row three">
     <button class="btn" onclick="grpoResample()">Resample</button>
@@ -985,7 +985,7 @@ const S = {
   NPG: 16, lrPG: 0.05,
   // PPO hyperparameters + learned scalar baseline V
   NPPO: 16, epsPPO: 0.2, lrPPO: 0.05, lrPPOv: 0.2, Vppo: 0,
-  G: 8, eps: 0.2, lrG: 0.05,
+  G: 8, eps: 0.2, lrG: 0.03,
   // DPO hyperparameters
   betaDPO: 0.5, N: 32, lrDPO: 0.05, prefNoise: 0.5,
   // DRO hyperparameters + learned baseline V
@@ -1172,7 +1172,9 @@ function recomputeGRPOQuantities() {
   for (let i = 0; i < G; i++) mean += S.grpo.rewards[i];
   mean /= G;
   for (let i = 0; i < G; i++) m2 += (S.grpo.rewards[i]-mean)*(S.grpo.rewards[i]-mean);
-  const std = Math.sqrt(m2 / Math.max(1, G-1)) + 1e-8;
+  // Floor at 0.05 (not 1e-8): when the group lands in a flat region of r,
+  // the raw std collapses and (r-mean)/std blows up advantages with noise.
+  const std = Math.max(0.05, Math.sqrt(m2 / Math.max(1, G-1)));
   S.grpo.advs = S.grpo.rewards.map(r => (r-mean)/std);
   // ratios at current θ vs. π_old
   S.grpo.ratios = S.grpo.samples.map(a =>
@@ -1507,7 +1509,7 @@ const COMPARE_DEFAULTS = {
   lrExact: 0.1,
   NPG: 16, lrPG: 0.05,
   NPPO: 16, epsPPO: 0.2, lrPPO: 0.05, lrPPOv: 0.2,
-  G: 8, eps: 0.2, lrG: 0.05,
+  G: 8, eps: 0.2, lrG: 0.03,
   betaDPO: 0.5, N: 32, lrDPO: 0.05, prefNoise: 0.5,
   betaDRO: 0.5, NDRO: 32, lrDROth: 0.05, lrDROv: 0.1,
 };
@@ -1618,7 +1620,7 @@ function compareRunAll() {
     rmean /= D.G;
     let m2 = 0;
     for (let k = 0; k < D.G; k++) m2 += (rewards[k]-rmean)*(rewards[k]-rmean);
-    const std = Math.sqrt(m2 / Math.max(1, D.G-1)) + 1e-8;
+    const std = Math.max(0.05, Math.sqrt(m2 / Math.max(1, D.G-1)));
     const sig2 = sig*sig, sig3 = sig2*sig;
     let gMu = 0, gSig = 0;
     for (let k = 0; k < D.G; k++) {
@@ -2549,7 +2551,7 @@ function resetAll() {
   S.lrExact = 0.1;
   S.NPG = 16;    S.lrPG = 0.05;
   S.NPPO = 16;   S.epsPPO = 0.2;  S.lrPPO = 0.05; S.lrPPOv = 0.2; S.Vppo = 0;
-  S.G = 8;       S.eps = 0.2;     S.lrG = 0.05;
+  S.G = 8;       S.eps = 0.2;     S.lrG = 0.03;
   S.betaDPO = 0.5; S.N = 32; S.lrDPO = 0.05; S.prefNoise = 0.5;
   S.betaDRO = 0.5; S.NDRO = 32; S.lrDROth = 0.05; S.lrDROv = 0.1; S.Vdro = 0;
 
