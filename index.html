@@ -904,6 +904,15 @@
       <div id="plot-dpoMargins" class="plot" style="height: 300px;"></div>
     </div>
   </div>
+
+  <div class="panel">
+    <div class="panel-title">Pairwise accuracy over steps <span class="light">· <span class="t-dpo">violet = implicit margin $h_i>0$</span> · <span class="t-pi">red = $\pi_\theta$ alone</span> · <span style="color:var(--ref)">gray = $\pi_{\mathrm{ref}}$ alone (frozen)</span></span></div>
+    <div class="panel-eq">$\mathrm{acc} \;=\; \dfrac{1}{N}\displaystyle\sum_i \mathbf{1}\!\left[h_i > 0\right]$, &nbsp; the fraction of pairs $\pi_\theta$ orders the way the oracle did</div>
+    <div id="plot-dpoAccuracy" class="plot" style="height: 280px;"></div>
+    <div class="prose" style="margin-top: 10px; font-size: 13px;">
+      <p>Press <strong>Step</strong> or <strong>Play</strong> in the sidebar and watch the <span class="t-dpo">violet</span> curve climb as DPO reorders the fixed preference set. The implicit-margin accuracy ($h_i>0$) is what the loss directly drives; the <span class="t-pi">red</span> curve drops the $\pi_{\mathrm{ref}}$ correction and asks only whether $\pi_\theta$ itself ranks $a_w$ above $a_l$. The <span style="color:var(--ref)">gray</span> line — how often $\pi_{\mathrm{ref}}$ alone gets the pair right — is flat because the reference never moves; it's the baseline DPO starts from. With label noise ($\nu>0$) accuracy plateaus below 100%: some pairs are mislabeled and can't all be satisfied at once. <strong>Resample</strong> draws a new preference set without clearing the curve, so you can see the accuracy jump as the data changes.</p>
+    </div>
+  </div>
 </div>
 
 <!-- ─── DRO tab ─── -->
@@ -1008,6 +1017,8 @@ const S = {
   trajDPO:   [],
   trajDRO:   [],
   trajVdro:  [],
+  // DPO accuracy history: one {acc, piAcc, refAcc} per step (pre-update θ)
+  dpoAccHist: [],
   playExact: null,
   playPG:    null,
   playPPO:   null,
@@ -1408,6 +1419,25 @@ function recomputeDPOQuantities() {
   S.dpo.margins = S.dpo.pairs.map(p => dpoMargin(p.aw, p.al));
 }
 
+// Fraction of the current preference set ordered correctly, at the current θ.
+//   acc    : implicit-margin accuracy — pairs with h_i > 0 (what DPO drives up)
+//   piAcc  : the policy alone orders the pair — log π_θ(a_w) > log π_θ(a_l)
+//   refAcc : the reference alone orders the pair — frozen, so this stays flat
+function dpoAccuracies() {
+  const pairs = S.dpo.pairs, n = pairs.length;
+  if (n === 0) return null;
+  let acc = 0, piAcc = 0, refAcc = 0;
+  for (const p of pairs) {
+    const lpiW = logGauss(p.aw, S.muTh,  S.sigTh),  lpiL = logGauss(p.al, S.muTh,  S.sigTh);
+    const lreW = logGauss(p.aw, S.muRef, S.sigRef), lreL = logGauss(p.al, S.muRef, S.sigRef);
+    const h = S.betaDPO * ((lpiW - lreW) - (lpiL - lreL));   // implicit margin
+    if (h > 0)       acc++;
+    if (lpiW > lpiL) piAcc++;
+    if (lreW > lreL) refAcc++;
+  }
+  return { acc: acc/n, piAcc: piAcc/n, refAcc: refAcc/n };
+}
+
 function dpoStep() {
   if (S.dpo.pairs.length === 0) dpoResample();
   const N = S.dpo.pairs.length;
@@ -1428,6 +1458,7 @@ function dpoStep() {
   }
   gMu /= N; gSig /= N;
   S.trajDPO.push([S.muTh, S.sigTh]);
+  S.dpoAccHist.push(dpoAccuracies());     // accuracy at the pre-update θ
   // Gradient descent on the loss
   S.muTh  = clamp(S.muTh  - S.lrDPO * gMu,  -4, 4);
   S.sigTh = clamp(S.sigTh - S.lrDPO * gSig, 0.03, 3);
@@ -1531,7 +1562,7 @@ function compareRunAll() {
   const beta = S.beta;             // KL temperature is shared with the toy model
   const muR  = S.muRef, sigR = S.sigRef;
 
-  S.trajExact = []; S.trajPG = []; S.trajPPO = []; S.trajGRPO = []; S.trajDPO = []; S.trajDRO = []; S.trajVdro = [];
+  S.trajExact = []; S.trajPG = []; S.trajPPO = []; S.trajGRPO = []; S.trajDPO = []; S.trajDRO = []; S.trajVdro = []; S.dpoAccHist = [];
 
   // 1) Exact gradient — deterministic
   let mu = muStart, sig = sigStart;
@@ -1728,7 +1759,7 @@ function gradKLAt(mu, sig, muR, sigR) {
    ============================================================ */
 function clamp(x, a, b) { return Math.max(a, Math.min(b, x)); }
 function fmt(x, d=3) { return (x>=0?" ":"") + x.toFixed(d); }
-function clearTraj() { S.trajExact = []; S.trajPG = []; S.trajPPO = []; S.trajGRPO = []; S.trajDPO = []; S.trajDRO = []; S.trajVdro = []; renderAll(); }
+function clearTraj() { S.trajExact = []; S.trajPG = []; S.trajPPO = []; S.trajGRPO = []; S.trajDPO = []; S.trajDRO = []; S.trajVdro = []; S.dpoAccHist = []; renderAll(); }
 function syncSliders() {
   document.getElementById('mu').value  = S.muTh;
   document.getElementById('sig').value = S.sigTh;
@@ -2146,6 +2177,7 @@ function renderDPOPanels() {
   if (pairs.length === 0) {
     Plotly.react("plot-dpoPairs",   [], emptyLayout("press Resample in the left sidebar to begin"), { displayModeBar:false, responsive:true });
     Plotly.react("plot-dpoMargins", [], emptyLayout(),                          { displayModeBar:false, responsive:true });
+    renderDPOAccuracy();
     return;
   }
   const margins = S.dpo.margins;
@@ -2217,7 +2249,55 @@ function renderDPOPanels() {
     font: { family:"Inter Tight, sans-serif", size:11 },
   }, { displayModeBar:false, responsive:true });
 
+  renderDPOAccuracy();
   attachDPOLink();
+}
+
+// Time series of pairwise accuracy over DPO steps. History holds the
+// pre-update accuracy of each step; we append the live (current θ) point
+// so the curve always ends at where the policy stands right now.
+function renderDPOAccuracy() {
+  const hist = S.dpoAccHist.slice();
+  const live = dpoAccuracies();
+  if (live) hist.push(live);
+  if (hist.length === 0) {
+    Plotly.react("plot-dpoAccuracy", [], {
+      margin:{ l:48, r:14, t:6, b:30 },
+      annotations:[{ text:"press Resample, then Step", showarrow:false,
+        x:0.5, y:0.5, xref:"paper", yref:"paper", font:{ color:"#999" } }],
+      xaxis:{ visible:false }, yaxis:{ visible:false },
+      plot_bgcolor:"#fff", paper_bgcolor:"#fff",
+    }, { displayModeBar:false, responsive:true });
+    return;
+  }
+  const xs   = hist.map((_, k) => k);
+  const xMax = Math.max(2, hist.length - 1);
+  const accY = hist.map(h => 100 * h.acc);
+  const piY  = hist.map(h => 100 * h.piAcc);
+  const refY = hist.map(h => 100 * h.refAcc);
+  Plotly.react("plot-dpoAccuracy", [
+    { x:[0, xMax], y:[50, 50], mode:"lines",
+      line:{ color:"#ddd", width:1, dash:"dot" }, hoverinfo:"skip", showlegend:false },
+    { x:xs, y:refY, mode:"lines", name:"π_ref alone",
+      line:{ color:"#6b6b6b", width:1.4, dash:"dash" },
+      hovertemplate:"step %{x}<br>π_ref acc = %{y:.0f}%<extra></extra>", showlegend:false },
+    { x:xs, y:piY, mode:"lines+markers", name:"π_θ alone",
+      line:{ color:"#c0392b", width:1.6 }, marker:{ size:4, color:"#c0392b" },
+      hovertemplate:"step %{x}<br>π_θ acc = %{y:.0f}%<extra></extra>", showlegend:false },
+    { x:xs, y:accY, mode:"lines+markers", name:"implicit margin",
+      line:{ color:"#7d3c98", width:2.4 }, marker:{ size:5, color:"#7d3c98" },
+      hovertemplate:"step %{x}<br>DPO acc = %{y:.0f}%<extra></extra>", showlegend:false },
+    { x:[xs[xs.length-1]], y:[accY[accY.length-1]], mode:"markers",
+      marker:{ size:11, color:"#7d3c98", line:{ color:"white", width:2 } },
+      hovertemplate:`current = ${accY[accY.length-1].toFixed(0)}%<extra></extra>`, showlegend:false },
+  ], {
+    margin:{ l:48, r:14, t:6, b:36 },
+    xaxis:{ title:"DPO step", gridcolor:"#eee", zeroline:false, range:[0, xMax] },
+    yaxis:{ title:"pairs ordered correctly (%)", gridcolor:"#eee",
+            zeroline:false, range:[-3, 103] },
+    plot_bgcolor:"#fff", paper_bgcolor:"#fff",
+    font:{ family:"Inter Tight, sans-serif", size:11 },
+  }, { displayModeBar:false, responsive:true });
 }
 
 function attachDPOLink() {
@@ -2521,7 +2601,7 @@ function togglePlayDRO() {
    ============================================================ */
 function resetPolicy() {
   S.muTh = 0; S.sigTh = 1.0;
-  S.trajExact = []; S.trajPG = []; S.trajPPO = []; S.trajGRPO = []; S.trajDPO = []; S.trajDRO = []; S.trajVdro = [];
+  S.trajExact = []; S.trajPG = []; S.trajPPO = []; S.trajGRPO = []; S.trajDPO = []; S.trajDRO = []; S.trajVdro = []; S.dpoAccHist = [];
   syncSliders();
   renderAll();
 }
@@ -2561,7 +2641,7 @@ function resetAll() {
   S.grpo = { piOldMu: 0, piOldSig: 1.0, samples: [], rewards: [], advs: [], ratios: [], surr: [] };
   S.dpo  = { pairs: [], margins: [], selected: null };
   S.dro  = { samples: [], rewards: [], residuals: [], selected: null };
-  S.trajExact = []; S.trajPG = []; S.trajPPO = []; S.trajGRPO = []; S.trajDPO = []; S.trajDRO = []; S.trajVdro = [];
+  S.trajExact = []; S.trajPG = []; S.trajPPO = []; S.trajGRPO = []; S.trajDPO = []; S.trajDRO = []; S.trajVdro = []; S.dpoAccHist = [];
 
   // Push all S values back to the DOM controls
   const setSlider = (id, val, d) => {
@@ -2696,7 +2776,7 @@ document.addEventListener('DOMContentLoaded', () => {
     S.grpo.samples = []; S.grpo.rewards = []; S.grpo.advs = []; S.grpo.ratios = []; S.grpo.surr = [];
     S.dpo.pairs = []; S.dpo.margins = []; S.dpo.selected = null;
     S.dro.samples = []; S.dro.rewards = []; S.dro.residuals = []; S.dro.selected = null;
-    S.trajExact = []; S.trajPG = []; S.trajPPO = []; S.trajGRPO = []; S.trajDPO = []; S.trajDRO = []; S.trajVdro = [];
+    S.trajExact = []; S.trajPG = []; S.trajPPO = []; S.trajGRPO = []; S.trajDPO = []; S.trajDRO = []; S.trajVdro = []; S.dpoAccHist = [];
     renderAll();
   });
 
