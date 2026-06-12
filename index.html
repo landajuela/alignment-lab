@@ -6,12 +6,20 @@
 <title>The Geometry of Alignment — RLHF, PPO, GRPO, DPO, and DRO in One Dimension</title>
 
 <!-- Plotly for plots -->
-<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"
+  integrity="sha384-cCVCZkAjYNxaYKbM8lsArLznDF/SvMFr1jcZrvOpSTCa0W40ZAdLzHCEulnUa5i7"
+  crossorigin="anonymous"></script>
 
 <!-- KaTeX -->
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
-<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css"
+  integrity="sha384-nB0miv6/jRmo5UMMR1wu3Gz6NLsoTkbqJghGIsx//Rlm+ZU03BU6SQNC66uf4l5+"
+  crossorigin="anonymous" />
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"
+  integrity="sha384-7zkQWkzuo3B5mTepMUcHkMB5jZaolc2xDwL6VFqjFALcbeS9Ggm/Yr2r3Dy4lfFg"
+  crossorigin="anonymous"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"
+  integrity="sha384-43gviWU0YVjaDtb/GhzOouOXtZMP/7XUzwPTstBeZFe/+rCMvRwr4yROQP43s0Xk"
+  crossorigin="anonymous"
   onload="renderMathInElement(document.body,{delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}]});"></script>
 
 <!-- Typography -->
@@ -480,6 +488,15 @@
       <span class="hint">Small $\beta$ → chase reward. Large $\beta$ → stay near $\pi_{\mathrm{ref}}$.</span>
     </div>
   </div>
+
+  <div class="controls">
+    <h3>Random seed</h3>
+    <div class="control">
+      <label>Seed <span class="val" id="val-seed">off</span></label>
+      <input type="number" id="seedInput" class="preset" min="0" step="1" value="0" />
+      <span class="hint">0 = unseeded. Any other value makes sampling reproducible — in particular, <em>Run all</em> on the Compare tab replays the exact same stochastic trajectories.</span>
+    </div>
+  </div>
 </div>
 
 <div class="group group-policy">
@@ -556,6 +573,11 @@
     <input type="range" id="epsPPO" min="0.02" max="0.5" step="0.01" value="0.2" />
   </div>
   <div class="control">
+    <label>Epochs $K$ <span class="val" id="val-Kppo">4</span></label>
+    <input type="range" id="Kppo" min="1" max="16" step="1" value="4" />
+    <span class="hint">Gradient steps per batch before $\pi_{\mathrm{old}}$ refreshes (Play resamples every $K$ steps). With $K>1$ the ratios drift from 1 and the clip band actually engages.</span>
+  </div>
+  <div class="control">
     <label>$\eta_\theta$ (policy) <span class="val" id="val-lrPPO">0.05</span></label>
     <input type="range" id="lrPPO" min="0.005" max="0.3" step="0.005" value="0.05" />
   </div>
@@ -583,6 +605,11 @@
   <div class="control">
     <label>Clip $\varepsilon$ <span class="val" id="val-eps">0.20</span></label>
     <input type="range" id="eps" min="0.02" max="0.5" step="0.01" value="0.2" />
+  </div>
+  <div class="control">
+    <label>Epochs $K$ <span class="val" id="val-Kgrpo">4</span></label>
+    <input type="range" id="Kgrpo" min="1" max="16" step="1" value="4" />
+    <span class="hint">Gradient steps per group before $\pi_{\mathrm{old}}$ refreshes (Play resamples every $K$ steps). With $K>1$ the ratios drift from 1 and clipping engages.</span>
   </div>
   <div class="control">
     <label>Learning rate $\eta$ <span class="val" id="val-lrG">0.03</span></label>
@@ -638,6 +665,11 @@
     <label>Sample budget &times;<span class="val" id="val-cmpScale">1.00</span> <span class="light" id="val-cmpCounts">· PG 16 · PPO 16 · GRPO 8 · DPO 32 · DRO 32</span></label>
     <input type="range" id="cmpScale" min="0.125" max="8" step="0.125" value="1" />
     <span class="hint">Proportional knob on the sample count used by every sampled / offline algorithm. $1\times$ uses the per-tab defaults (PG $N$, PPO $N$, GRPO $G$, DPO $N$ pairs, DRO $N$); larger values mean lower variance, smaller values mean noisier trajectories. The exact gradient is analytic and unaffected.</span>
+  </div>
+  <div class="control">
+    <label>Runs per algorithm <span class="val" id="val-cmpRuns">1</span></label>
+    <input type="range" id="cmpRuns" min="1" max="10" step="1" value="1" />
+    <span class="hint">Re-run every stochastic algorithm this many times. The map shows the first run; the $J$-vs-step chart shows the median with a min–max band.</span>
   </div>
   <div class="btn-row">
     <button class="btn primary" onclick="compareRunAll()">▶ Run all</button>
@@ -730,13 +762,13 @@
   <p><strong>Six algorithms, one landscape.</strong> Click any tab below to swap the bottom half of the page — including the sidebar's <em>method hyperparameters</em> — to that algorithm. Each tab tells the same story (the policy climbs toward <span class="t-star">$\pi^\star$</span>) but with a different gradient estimator: an idealized analytic gradient, a vanilla sampled gradient, a clipped surrogate with a learned baseline, a clipped group-relative variant, a preference-only logistic loss, or a regression on a learned baseline. The last tab, <em>Compare</em>, runs all six from the same starting point and overlays their trajectories on a single map.</p>
 </div>
 <div class="tabs" role="tablist">
-  <button class="tab-btn active" role="tab" data-target="rlhf" onclick="setTab('rlhf')">RLHF · exact</button>
-  <button class="tab-btn"        role="tab" data-target="pg"   onclick="setTab('pg')">PG</button>
-  <button class="tab-btn"        role="tab" data-target="ppo"  onclick="setTab('ppo')">PPO</button>
-  <button class="tab-btn"        role="tab" data-target="grpo" onclick="setTab('grpo')">GRPO</button>
-  <button class="tab-btn"        role="tab" data-target="dpo"  onclick="setTab('dpo')">DPO</button>
-  <button class="tab-btn"        role="tab" data-target="dro"  onclick="setTab('dro')">DRO</button>
-  <button class="tab-btn"        role="tab" data-target="compare" onclick="setTab('compare')">Compare</button>
+  <button class="tab-btn active" role="tab" aria-selected="true"  tabindex="0"  data-target="rlhf" onclick="setTab('rlhf')">RLHF · exact</button>
+  <button class="tab-btn"        role="tab" aria-selected="false" tabindex="-1" data-target="pg"   onclick="setTab('pg')">PG</button>
+  <button class="tab-btn"        role="tab" aria-selected="false" tabindex="-1" data-target="ppo"  onclick="setTab('ppo')">PPO</button>
+  <button class="tab-btn"        role="tab" aria-selected="false" tabindex="-1" data-target="grpo" onclick="setTab('grpo')">GRPO</button>
+  <button class="tab-btn"        role="tab" aria-selected="false" tabindex="-1" data-target="dpo"  onclick="setTab('dpo')">DPO</button>
+  <button class="tab-btn"        role="tab" aria-selected="false" tabindex="-1" data-target="dro"  onclick="setTab('dro')">DRO</button>
+  <button class="tab-btn"        role="tab" aria-selected="false" tabindex="-1" data-target="compare" onclick="setTab('compare')">Compare</button>
 </div>
 
 <!-- ─── RLHF tab ─── -->
@@ -968,7 +1000,7 @@
 
 <!-- ─── Compare tab ─── -->
 <div class="tab-compare">
-  <h2 class="section" style="margin-top:0;"><span class="num">03</span>Compare — five trajectories, one landscape</h2>
+  <h2 class="section" style="margin-top:0;"><span class="num">03</span>Compare — six trajectories, one landscape</h2>
   <div class="prose" style="margin-bottom: 14px; max-width: none;">
     <p>Everything we've seen so far, one map. Press <strong>Run all</strong> in the sidebar to launch each algorithm from the <em>same</em> initial point $(\mu_\theta,\sigma_\theta)$ — the current red dot — with hardcoded default hyperparameters (so the comparison is fair regardless of how you've tweaked the sliders in other tabs). Each algorithm runs for the chosen number of steps; the trajectories are then drawn on top of the shared objective surface.</p>
     <p style="font-size: 14px;">A few things to look for: (1) the <span class="t-exact">blue</span> exact path is deterministic; everything else is a Monte-Carlo run, so re-running gives different but qualitatively similar traces. (2) <span class="t-pg">PG</span>, <span class="t-ppo">PPO</span>, and <span class="t-pi">GRPO</span> hug the analytic gradient field with sampling noise — PPO and GRPO clip the step, GRPO additionally divides the advantage by the in-batch std. (3) <span class="t-dpo">DPO</span> and <span class="t-dro">DRO</span> minimize <em>different</em> losses — they don't see $J$ directly — yet their paths still climb toward the same $\pi^\star$, often through different intermediate $(\mu,\sigma)$ regions. (4) Switch the reward preset to <em>Two bumps</em> and re-run: the sampling-based methods are more sensitive to which basin they get pulled into early on.</p>
@@ -976,6 +1008,14 @@
   <div class="panel">
     <div class="panel-title">All six trajectories on the objective surface <span class="light">· click to toggle: <button type="button" class="cmp-toggle t-exact" data-algo="exact">blue = exact $\nabla_{\!\theta} J$</button> · <button type="button" class="cmp-toggle t-pg" data-algo="pg">rose = PG</button> · <button type="button" class="cmp-toggle t-ppo" data-algo="ppo">brown = PPO</button> · <button type="button" class="cmp-toggle t-pi" data-algo="grpo">red = GRPO</button> · <button type="button" class="cmp-toggle t-dpo" data-algo="dpo">purple = DPO</button> · <button type="button" class="cmp-toggle t-dro" data-algo="dro">teal = DRO</button></span></div>
     <div id="plot-trajCompare" class="plot" style="height: 540px;"></div>
+  </div>
+
+  <div class="panel" style="margin-top: 20px;">
+    <div class="panel-title">Objective over steps <span class="light">· $J(\theta_t)$ evaluated along each trajectory · dashed = $J(\pi^\star)$</span></div>
+    <div id="plot-cmpJ" class="plot" style="height: 340px;"></div>
+    <div class="prose" style="margin-top: 10px; font-size: 13px;">
+      <p>The same runs as the map above, scored by the RLHF objective $J(\theta) = \mathbb{E}[r] - \beta\,\mathrm{KL}$ at every step. This answers what the 2D paths can't: <em>which method climbs fastest, which plateaus, and how far below $J(\pi^\star)$ each one settles.</em> DPO and DRO never see $J$ — watching their curves rise anyway is the whole point. Set <strong>Runs per algorithm</strong> &gt; 1 to get a median line with a min–max band, separating an algorithm's typical behavior from a lucky draw. The toggles in the map's title hide curves here too.</p>
+    </div>
   </div>
 </div>
 
@@ -991,6 +1031,46 @@
 "use strict";
 
 /* ============================================================
+   SEMANTIC PALETTE — read once from the CSS custom properties in
+   :root so the Plotly traces and the CSS stay in sync. Retheme in
+   one place (the <style> block); never hard-code these hexes here.
+   ============================================================ */
+const _css = getComputedStyle(document.documentElement);
+const C = {
+  ref:    _css.getPropertyValue('--ref').trim(),
+  pi:     _css.getPropertyValue('--pi').trim(),
+  star:   _css.getPropertyValue('--star').trim(),
+  reward: _css.getPropertyValue('--reward').trim(),
+  accent: _css.getPropertyValue('--accent').trim(),
+  pg:     _css.getPropertyValue('--pg').trim(),
+  ppo:    _css.getPropertyValue('--ppo').trim(),
+  dpo:    _css.getPropertyValue('--dpo').trim(),
+  dro:    _css.getPropertyValue('--dro').trim(),
+};
+function hexToRgba(hex, a) {
+  const h = hex.replace('#', '');
+  return `rgba(${parseInt(h.slice(0,2),16)},${parseInt(h.slice(2,4),16)},${parseInt(h.slice(4,6),16)},${a})`;
+}
+
+/* ============================================================
+   SEEDABLE RNG — seed 0 falls back to Math.random; any other seed
+   gives a reproducible stream (mulberry32). compareRunAll re-seeds
+   at the start of each run, so seeded Compare runs replay exactly.
+   ============================================================ */
+function mulberry32(seed) {
+  let t = seed >>> 0;
+  return function () {
+    t = (t + 0x6D2B79F5) | 0;
+    let r = Math.imul(t ^ (t >>> 15), 1 | t);
+    r = (r + Math.imul(r ^ (r >>> 7), 61 | r)) ^ r;
+    return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+  };
+}
+let _rand = Math.random;
+function setSeed(seed) { _rand = (seed > 0) ? mulberry32(seed) : Math.random; }
+function rand() { return _rand(); }
+
+/* ============================================================
    STATE
    ============================================================ */
 const S = {
@@ -998,12 +1078,14 @@ const S = {
   muTh:  0, sigTh:  1.0,
   beta:  0.5,
   rewardPreset: "single",
+  seed: 0,                 // 0 = unseeded; >0 = reproducible RNG stream
   lrExact: 0.1,
   // PG hyperparameters
   NPG: 16, lrPG: 0.05,
-  // PPO hyperparameters + learned scalar baseline V
-  NPPO: 16, epsPPO: 0.2, lrPPO: 0.05, lrPPOv: 0.2, Vppo: 0,
-  G: 8, eps: 0.2, lrG: 0.03,
+  // PPO hyperparameters + learned scalar baseline V.
+  // Kppo = inner epochs: gradient steps per batch before π_old refreshes.
+  NPPO: 16, epsPPO: 0.2, lrPPO: 0.05, lrPPOv: 0.2, Vppo: 0, Kppo: 4,
+  G: 8, eps: 0.2, lrG: 0.03, Kgrpo: 4,
   // DPO hyperparameters
   betaDPO: 0.5, N: 32, lrDPO: 0.05, prefNoise: 0.5,
   // DRO hyperparameters + learned baseline V
@@ -1030,12 +1112,17 @@ const S = {
   dpoAccHist: [],
   // DRO loss history: one {loss, bias, variance} per step (pre-update θ, V)
   droLossHist: [],
+  // Compare-tab J-vs-step curves: { algo: [run0Jcurve, run1Jcurve, ...] }
+  cmpJ: null,
   playExact: null,
   playPG:    null,
   playPPO:   null,
   playG:     null,
   playDPO:   null,
   playDRO:   null,
+  // Play-loop tick counters for PPO/GRPO: π_old refreshes every K ticks.
+  ppoTick:  0,
+  grpoTick: 0,
   // Per-algorithm visibility on the Compare tab. Toggled by the
   // clickable legend in the panel title; drives the `paths` flags.
   compareVisible: { exact:true, pg:true, ppo:true, grpo:true, dpo:true, dro:true },
@@ -1072,10 +1159,10 @@ function logGauss(a, mu, sig) {
   const z = (a-mu)/sig;
   return -0.5*z*z - Math.log(sig*SQRT_2PI);
 }
-// Box-Muller
+// Box-Muller, on the seedable stream
 function randn() {
-  const u = 1 - Math.random();
-  const v = Math.random();
+  const u = 1 - rand();
+  const v = rand();
   return Math.sqrt(-2*Math.log(u)) * Math.cos(2*Math.PI*v);
 }
 
@@ -1132,7 +1219,12 @@ const A_GRID = new Array(A_N);
 for (let i = 0; i < A_N; i++) A_GRID[i] = A_MIN + (A_MAX-A_MIN) * i / (A_N-1);
 const DA = (A_MAX - A_MIN) / (A_N - 1);
 
+// π* depends only on (preset, β, π_ref); cache it so play loops and
+// slider drags don't redo the grid integration on every frame.
+let _starCache = { key: "", val: null };
 function computeStar() {
+  const key = `${S.rewardPreset}|${S.beta}|${S.muRef}|${S.sigRef}`;
+  if (_starCache.key === key) return _starCache.val;
   const log_unnorm = new Array(A_N);
   let maxLog = -Infinity;
   for (let i = 0; i < A_N; i++) {
@@ -1165,23 +1257,200 @@ function computeStar() {
     const lref = logGauss(a, S.muRef, S.sigRef);
     if (pdf[i] > 1e-300) KL += pdf[i] * (Math.log(pdf[i]) - lref) * DA;
   }
-  return { pdf, muStar, sigStar, Jstar: Er - S.beta*KL };
+  const result = { pdf, muStar, sigStar, Jstar: Er - S.beta*KL };
+  _starCache = { key, val: result };
+  return result;
 }
 
 /* ============================================================
-   GRPO
+   ALGORITHM CORES — pure update rules shared by the interactive
+   tabs and the Compare runner, so each algorithm's math exists
+   exactly once. Cores read the shared environment (reward preset,
+   β, π_ref) from S but take the policy (mu, sig) and batch data as
+   arguments; they never touch S.muTh/S.sigTh or the DOM.
+   ============================================================ */
+function dlogPi(a, mu, sig) {
+  // ∇_θ log π_θ(a) for a Gaussian: ∂μ = (a-μ)/σ², ∂σ = -1/σ + (a-μ)²/σ³
+  const dMu  = (a - mu) / (sig*sig);
+  const dSig = -1/sig + (a - mu)*(a - mu) / (sig*sig*sig);
+  return [dMu, dSig];
+}
+
+function sampleBatch(mu, sig, n) {
+  const samples = new Array(n), rewards = new Array(n);
+  for (let i = 0; i < n; i++) {
+    samples[i] = mu + sig * randn();
+    rewards[i] = reward(samples[i]);
+  }
+  return { samples, rewards };
+}
+
+// Group-normalized advantages (GRPO). Floor at 0.05 (not 1e-8): when the
+// group lands in a flat region of r, the raw std collapses and
+// (r-mean)/std blows up advantages with noise.
+function groupAdvantages(rewards) {
+  const n = rewards.length;
+  let mean = 0, m2 = 0;
+  for (const r of rewards) mean += r;
+  mean /= n;
+  for (const r of rewards) m2 += (r - mean)*(r - mean);
+  const std = Math.max(0.05, Math.sqrt(m2 / Math.max(1, n - 1)));
+  return rewards.map(r => (r - mean)/std);
+}
+
+// Gradient of the clipped surrogate (1/n) Σ min(ρÂ, clip(ρ)Â) at (mu, sig).
+// Samples in the clipped, gradient-zero branch contribute nothing.
+function clippedSurrogateGrad(mu, sig, samples, advs, piOldMu, piOldSig, eps) {
+  const n = samples.length;
+  let gMu = 0, gSig = 0;
+  for (let i = 0; i < n; i++) {
+    const a = samples[i], A = advs[i];
+    const rho = Math.exp(logGauss(a, mu, sig) - logGauss(a, piOldMu, piOldSig));
+    if ((A > 0 && rho > 1+eps) || (A < 0 && rho < 1-eps)) continue;
+    const [dMu, dSig] = dlogPi(a, mu, sig);
+    gMu  += (1/n) * rho * A * dMu;
+    gSig += (1/n) * rho * A * dSig;
+  }
+  return [gMu, gSig];
+}
+
+function exactStepCore(mu, sig, lr) {
+  const [gMu, gSig] = gradJ(mu, sig);
+  return [clamp(mu + lr*gMu, -4, 4), clamp(sig + lr*gSig, 0.03, 3)];
+}
+
+// PG draws its own fresh batch (REINFORCE is on-policy) and returns it
+// so the interactive tab can display the samples it just used.
+function pgStepCore(mu, sig, N, lr) {
+  const { samples, rewards } = sampleBatch(mu, sig, N);
+  let mean = 0;
+  for (const r of rewards) mean += r;
+  mean /= N;
+  const advs = rewards.map(r => r - mean);
+  let gMu = 0, gSig = 0;
+  for (let i = 0; i < N; i++) {
+    const [dMu, dSig] = dlogPi(samples[i], mu, sig);
+    gMu  += (1/N) * advs[i] * dMu;
+    gSig += (1/N) * advs[i] * dSig;
+  }
+  const [gkMu, gkSig] = gradKL(mu, sig);
+  gMu  -= S.beta * gkMu;
+  gSig -= S.beta * gkSig;
+  return {
+    mu:    clamp(mu  + lr*gMu,  -4, 4),
+    sig:   clamp(sig + lr*gSig, 0.03, 3),
+    batch: { samples, rewards, advs },
+  };
+}
+
+function ppoStepCore(mu, sig, V, batch, piOldMu, piOldSig, p /* {eps, lr, lrV} */) {
+  const advs = batch.rewards.map(r => r - V);
+  let [gMu, gSig] = clippedSurrogateGrad(mu, sig, batch.samples, advs, piOldMu, piOldSig, p.eps);
+  const [gkMu, gkSig] = gradKL(mu, sig);
+  gMu  -= S.beta * gkMu;
+  gSig -= S.beta * gkSig;
+  let rBar = 0;
+  for (const r of batch.rewards) rBar += r;
+  rBar /= batch.rewards.length;
+  return {
+    mu:  clamp(mu  + p.lr*gMu,  -4, 4),
+    sig: clamp(sig + p.lr*gSig, 0.03, 3),
+    V:   clamp(V + p.lrV*(rBar - V), -10, 10),   // descent on ½(r̄-V)²
+  };
+}
+
+function grpoStepCore(mu, sig, batch, piOldMu, piOldSig, p /* {eps, lr} */) {
+  const advs = groupAdvantages(batch.rewards);
+  let [gMu, gSig] = clippedSurrogateGrad(mu, sig, batch.samples, advs, piOldMu, piOldSig, p.eps);
+  const [gkMu, gkSig] = gradKL(mu, sig);
+  gMu  -= S.beta * gkMu;
+  gSig -= S.beta * gkSig;
+  return {
+    mu:  clamp(mu  + p.lr*gMu,  -4, 4),
+    sig: clamp(sig + p.lr*gSig, 0.03, 3),
+  };
+}
+
+// DPO implicit margin h at an arbitrary policy (mu, sig).
+function dpoMarginAt(aw, al, mu, sig, betaDPO) {
+  const lw = logGauss(aw, mu, sig) - logGauss(aw, S.muRef, S.sigRef);
+  const ll = logGauss(al, mu, sig) - logGauss(al, S.muRef, S.sigRef);
+  return betaDPO * (lw - ll);
+}
+
+// Draw N preference pairs from π_ref, labeled by a noisy Bradley-Terry
+// oracle on r(a). prefNoise < 1e-3 degenerates to a deterministic argmax.
+function dpoMakePairs(N, prefNoise) {
+  const pairs = [];
+  for (let i = 0; i < N; i++) {
+    const a = S.muRef + S.sigRef * randn();
+    const b = S.muRef + S.sigRef * randn();
+    const dr = reward(a) - reward(b);
+    let aw, al;
+    if (prefNoise < 1e-3) {
+      aw = (dr >= 0) ? a : b;
+      al = (dr >= 0) ? b : a;
+    } else {
+      const p = sigmoid(dr / prefNoise);
+      if (rand() < p) { aw = a; al = b; } else { aw = b; al = a; }
+    }
+    pairs.push({ aw, al, dr: reward(aw) - reward(al) });
+  }
+  return pairs;
+}
+
+function dpoStepCore(mu, sig, pairs, p /* {betaDPO, lr} */) {
+  const sig2 = sig*sig, sig3 = sig2*sig;
+  let gMu = 0, gSig = 0;
+  for (const pr of pairs) {
+    const h = dpoMarginAt(pr.aw, pr.al, mu, sig, p.betaDPO);
+    const w = sigmoid(-h);                          // 1 - σ(h)
+    const dlMu  = ((pr.aw - mu) - (pr.al - mu)) / sig2;
+    const dlSig = ((pr.aw - mu)*(pr.aw - mu) - (pr.al - mu)*(pr.al - mu)) / sig3;
+    gMu  += -w * p.betaDPO * dlMu;
+    gSig += -w * p.betaDPO * dlSig;
+  }
+  gMu /= pairs.length; gSig /= pairs.length;
+  // gradient *descent* on the logistic loss
+  return {
+    mu:  clamp(mu  - p.lr*gMu,  -4, 4),
+    sig: clamp(sig - p.lr*gSig, 0.03, 3),
+  };
+}
+
+function droResidualAt(a, r, mu, sig, V, betaDRO) {
+  return r - V - betaDRO * (logGauss(a, mu, sig) - logGauss(a, S.muRef, S.sigRef));
+}
+
+function droStepCore(mu, sig, V, data /* {samples, rewards} */, p /* {betaDRO, lrTh, lrV} */) {
+  const n = data.samples.length;
+  let gMu = 0, gSig = 0, gV = 0;
+  for (let i = 0; i < n; i++) {
+    const a = data.samples[i];
+    const d = droResidualAt(a, data.rewards[i], mu, sig, V, p.betaDRO);
+    const [dMu, dSig] = dlogPi(a, mu, sig);
+    gMu  += -d * p.betaDRO * dMu;
+    gSig += -d * p.betaDRO * dSig;
+    gV   += -d;
+  }
+  gMu /= n; gSig /= n; gV /= n;
+  // gradient *descent* on the MSE loss, jointly in θ and V
+  return {
+    mu:  clamp(mu  - p.lrTh * gMu,  -4, 4),
+    sig: clamp(sig - p.lrTh * gSig, 0.03, 3),
+    V:   clamp(V   - p.lrV  * gV,  -10, 10),
+  };
+}
+
+/* ============================================================
+   GRPO — interactive tab (state + display around grpoStepCore)
    ============================================================ */
 function grpoResample() {
   S.grpo.piOldMu  = S.muTh;
   S.grpo.piOldSig = S.sigTh;
-  const G = S.G;
-  S.grpo.samples = new Array(G);
-  S.grpo.rewards = new Array(G);
-  for (let i = 0; i < G; i++) {
-    const a = S.muTh + S.sigTh * randn();
-    S.grpo.samples[i] = a;
-    S.grpo.rewards[i] = reward(a);
-  }
+  const b = sampleBatch(S.muTh, S.sigTh, S.G);
+  S.grpo.samples = b.samples;
+  S.grpo.rewards = b.rewards;
   recomputeGRPOQuantities();
   renderGRPOPanels();
 }
@@ -1189,15 +1458,7 @@ function grpoResample() {
 function recomputeGRPOQuantities() {
   const G = S.grpo.samples.length;
   if (G === 0) return;
-  // advantages
-  let mean = 0, m2 = 0;
-  for (let i = 0; i < G; i++) mean += S.grpo.rewards[i];
-  mean /= G;
-  for (let i = 0; i < G; i++) m2 += (S.grpo.rewards[i]-mean)*(S.grpo.rewards[i]-mean);
-  // Floor at 0.05 (not 1e-8): when the group lands in a flat region of r,
-  // the raw std collapses and (r-mean)/std blows up advantages with noise.
-  const std = Math.max(0.05, Math.sqrt(m2 / Math.max(1, G-1)));
-  S.grpo.advs = S.grpo.rewards.map(r => (r-mean)/std);
+  S.grpo.advs = groupAdvantages(S.grpo.rewards);
   // ratios at current θ vs. π_old
   S.grpo.ratios = S.grpo.samples.map(a =>
     Math.exp(logGauss(a, S.muTh, S.sigTh) - logGauss(a, S.grpo.piOldMu, S.grpo.piOldSig))
@@ -1214,59 +1475,28 @@ function recomputeGRPOQuantities() {
 // One GRPO gradient step on the *current* samples
 function grpoStep() {
   if (S.grpo.samples.length === 0) grpoResample();
-  recomputeGRPOQuantities();
-  const G = S.grpo.samples.length;
-  const eps = S.eps;
-  let gMu = 0, gSig = 0;
-  for (let i = 0; i < G; i++) {
-    const a = S.grpo.samples[i];
-    const A = S.grpo.advs[i];
-    const rho = S.grpo.ratios[i];
-    // Determine if this sample is in the clipped, gradient-zero branch
-    const isClippedAbove = (A > 0 && rho > 1+eps);
-    const isClippedBelow = (A < 0 && rho < 1-eps);
-    if (isClippedAbove || isClippedBelow) continue;
-    // gradient of rho*A w.r.t. (mu, sig):
-    //   d log pi_theta(a) / d mu  = (a - mu)/sig^2
-    //   d log pi_theta(a) / d sig = -1/sig + (a-mu)^2 / sig^3
-    const dlogMu  = (a - S.muTh)/(S.sigTh*S.sigTh);
-    const dlogSig = -1/S.sigTh + (a - S.muTh)*(a - S.muTh)/(S.sigTh*S.sigTh*S.sigTh);
-    gMu  += (1/G) * rho * A * dlogMu;
-    gSig += (1/G) * rho * A * dlogSig;
-  }
-  // - β * gradient of KL (analytic, same as exact)
-  const [gkmu, gksig] = gradKL(S.muTh, S.sigTh);
-  gMu  -= S.beta * gkmu;
-  gSig -= S.beta * gksig;
-
+  const out = grpoStepCore(S.muTh, S.sigTh,
+    { samples: S.grpo.samples, rewards: S.grpo.rewards },
+    S.grpo.piOldMu, S.grpo.piOldSig, { eps: S.eps, lr: S.lrG });
   S.trajGRPO.push([S.muTh, S.sigTh]);
-  S.muTh  = clamp(S.muTh  + S.lrG * gMu,  -4, 4);
-  S.sigTh = clamp(S.sigTh + S.lrG * gSig, 0.03, 3);
-
+  S.muTh = out.mu; S.sigTh = out.sig;
   syncSliders();
   recomputeGRPOQuantities();
   renderAll();
 }
 
 /* ============================================================
-   PPO — clipped surrogate with a learned scalar baseline V.
-   Samples are drawn from a frozen π_old at Resample time and
-   reused until the next Resample. Advantage is r_i - V (no
-   group-std normalization, unlike GRPO).
-     L_PPO = (1/N) Σ min(ρ_i A_i, clip(ρ_i, 1±ε) A_i)  - β KL
-     V    ← V + η_V · (r̄ - V)         (gradient descent on (r̄-V)²/2)
+   PPO — interactive tab. Samples are drawn from a frozen π_old at
+   Resample time and reused until the next Resample; advantage is
+   r_i - V against the learned scalar baseline (no group-std
+   normalization, unlike GRPO). Math lives in ppoStepCore.
    ============================================================ */
 function ppoResample() {
   S.ppo.piOldMu  = S.muTh;
   S.ppo.piOldSig = S.sigTh;
-  const N = S.NPPO;
-  S.ppo.samples = new Array(N);
-  S.ppo.rewards = new Array(N);
-  for (let i = 0; i < N; i++) {
-    const a = S.muTh + S.sigTh * randn();
-    S.ppo.samples[i] = a;
-    S.ppo.rewards[i] = reward(a);
-  }
+  const b = sampleBatch(S.muTh, S.sigTh, S.NPPO);
+  S.ppo.samples = b.samples;
+  S.ppo.rewards = b.rewards;
   recomputePPOQuantities();
   renderPPOPanels();
 }
@@ -1288,33 +1518,12 @@ function recomputePPOQuantities() {
 
 function ppoStep() {
   if (S.ppo.samples.length === 0) ppoResample();
-  recomputePPOQuantities();
-  const N = S.ppo.samples.length;
-  const eps = S.epsPPO;
-  let gMu = 0, gSig = 0, rBar = 0;
-  for (let i = 0; i < N; i++) {
-    const a   = S.ppo.samples[i];
-    const A   = S.ppo.advs[i];
-    const rho = S.ppo.ratios[i];
-    rBar += S.ppo.rewards[i];
-    const isClippedAbove = (A > 0 && rho > 1+eps);
-    const isClippedBelow = (A < 0 && rho < 1-eps);
-    if (isClippedAbove || isClippedBelow) continue;
-    const dlogMu  = (a - S.muTh)/(S.sigTh*S.sigTh);
-    const dlogSig = -1/S.sigTh + (a - S.muTh)*(a - S.muTh)/(S.sigTh*S.sigTh*S.sigTh);
-    gMu  += (1/N) * rho * A * dlogMu;
-    gSig += (1/N) * rho * A * dlogSig;
-  }
-  rBar /= N;
-  const [gkmu, gksig] = gradKL(S.muTh, S.sigTh);
-  gMu  -= S.beta * gkmu;
-  gSig -= S.beta * gksig;
-
+  const out = ppoStepCore(S.muTh, S.sigTh, S.Vppo,
+    { samples: S.ppo.samples, rewards: S.ppo.rewards },
+    S.ppo.piOldMu, S.ppo.piOldSig,
+    { eps: S.epsPPO, lr: S.lrPPO, lrV: S.lrPPOv });
   S.trajPPO.push([S.muTh, S.sigTh]);
-  S.muTh  = clamp(S.muTh  + S.lrPPO * gMu,  -4, 4);
-  S.sigTh = clamp(S.sigTh + S.lrPPO * gSig, 0.03, 3);
-  S.Vppo  = clamp(S.Vppo + S.lrPPOv * (rBar - S.Vppo), -10, 10);
-
+  S.muTh = out.mu; S.sigTh = out.sig; S.Vppo = out.V;
   syncSliders();
   document.getElementById('val-Vppo').textContent = S.Vppo.toFixed(3);
   recomputePPOQuantities();
@@ -1325,10 +1534,8 @@ function ppoStep() {
    EXACT-GRADIENT STEP (analytic)
    ============================================================ */
 function stepExact() {
-  const [gMu, gSig] = gradJ(S.muTh, S.sigTh);
   S.trajExact.push([S.muTh, S.sigTh]);
-  S.muTh  = clamp(S.muTh  + S.lrExact * gMu,  -4, 4);
-  S.sigTh = clamp(S.sigTh + S.lrExact * gSig, 0.03, 3);
+  [S.muTh, S.sigTh] = exactStepCore(S.muTh, S.sigTh, S.lrExact);
   syncSliders();
   renderAll();
 }
@@ -1339,14 +1546,9 @@ function stepExact() {
    ∇_θ J ≈ (1/N) Σ (r_i - r̄) ∇_θ log π_θ(a_i)  -  β ∇_θ KL
    ============================================================ */
 function pgResample() {
-  const N = S.NPG;
-  S.pg.samples = new Array(N);
-  S.pg.rewards = new Array(N);
-  for (let i = 0; i < N; i++) {
-    const a = S.muTh + S.sigTh * randn();
-    S.pg.samples[i] = a;
-    S.pg.rewards[i] = reward(a);
-  }
+  const b = sampleBatch(S.muTh, S.sigTh, S.NPG);
+  S.pg.samples = b.samples;
+  S.pg.rewards = b.rewards;
   recomputePGQuantities();
   renderPGPanels();
 }
@@ -1361,27 +1563,11 @@ function recomputePGQuantities() {
 }
 
 function pgStep() {
-  // Always resample: PG is on-policy.
-  pgResample();
-  const N = S.pg.samples.length;
-  const sig2 = S.sigTh * S.sigTh;
-  const sig3 = sig2 * S.sigTh;
-  let gMu = 0, gSig = 0;
-  for (let i = 0; i < N; i++) {
-    const a = S.pg.samples[i];
-    const A = S.pg.advs[i];
-    const dlMu  = (a - S.muTh) / sig2;
-    const dlSig = -1/S.sigTh + (a - S.muTh)*(a - S.muTh) / sig3;
-    gMu  += (1/N) * A * dlMu;
-    gSig += (1/N) * A * dlSig;
-  }
-  // - β ∇ KL (analytic, shared with the other methods)
-  const [gkmu, gksig] = gradKL(S.muTh, S.sigTh);
-  gMu  -= S.beta * gkmu;
-  gSig -= S.beta * gksig;
+  // On-policy: the core draws a fresh batch from the current π_θ.
+  const out = pgStepCore(S.muTh, S.sigTh, S.NPG, S.lrPG);
+  S.pg = out.batch;
   S.trajPG.push([S.muTh, S.sigTh]);
-  S.muTh  = clamp(S.muTh  + S.lrPG * gMu,  -4, 4);
-  S.sigTh = clamp(S.sigTh + S.lrPG * gSig, 0.03, 3);
+  S.muTh = out.mu; S.sigTh = out.sig;
   syncSliders();
   renderAll();
 }
@@ -1399,29 +1585,12 @@ function negLogSigmoid(h) {
 }
 
 function dpoMargin(aw, al) {
-  const lw = logGauss(aw, S.muTh, S.sigTh) - logGauss(aw, S.muRef, S.sigRef);
-  const ll = logGauss(al, S.muTh, S.sigTh) - logGauss(al, S.muRef, S.sigRef);
-  return S.betaDPO * (lw - ll);
+  return dpoMarginAt(aw, al, S.muTh, S.sigTh, S.betaDPO);
 }
 
 function dpoResample() {
-  S.dpo.pairs = [];
+  S.dpo.pairs = dpoMakePairs(S.N, S.prefNoise);
   S.dpo.selected = null;
-  for (let i = 0; i < S.N; i++) {
-    const a = S.muRef + S.sigRef * randn();
-    const b = S.muRef + S.sigRef * randn();
-    const dr = reward(a) - reward(b);
-    let aw, al;
-    if (S.prefNoise < 1e-3) {
-      aw = (dr >= 0) ? a : b;
-      al = (dr >= 0) ? b : a;
-    } else {
-      const p = sigmoid(dr / S.prefNoise);
-      if (Math.random() < p) { aw = a; al = b; }
-      else                   { aw = b; al = a; }
-    }
-    S.dpo.pairs.push({ aw, al, dr: reward(aw) - reward(al) });
-  }
   recomputeDPOQuantities();
   renderAll();
 }
@@ -1451,28 +1620,11 @@ function dpoAccuracies() {
 
 function dpoStep() {
   if (S.dpo.pairs.length === 0) dpoResample();
-  const N = S.dpo.pairs.length;
-  let gMu = 0, gSig = 0;
-  const sig2 = S.sigTh * S.sigTh;
-  const sig3 = sig2 * S.sigTh;
-  for (const p of S.dpo.pairs) {
-    const h = dpoMargin(p.aw, p.al);
-    const w = sigmoid(-h);                          // 1 - σ(h)
-    // ∇_θ log π_θ(a) for Gaussian:
-    //   ∂_μ  = (a - μ)/σ²
-    //   ∂_σ  = -1/σ + (a-μ)²/σ³
-    const dlMu  = ((p.aw - S.muTh) - (p.al - S.muTh)) / sig2;
-    const dlSig = ((p.aw - S.muTh)*(p.aw - S.muTh)
-                 - (p.al - S.muTh)*(p.al - S.muTh)) / sig3;
-    gMu  += -w * S.betaDPO * dlMu;
-    gSig += -w * S.betaDPO * dlSig;
-  }
-  gMu /= N; gSig /= N;
   S.trajDPO.push([S.muTh, S.sigTh]);
   S.dpoAccHist.push(dpoAccuracies());     // accuracy at the pre-update θ
-  // Gradient descent on the loss
-  S.muTh  = clamp(S.muTh  - S.lrDPO * gMu,  -4, 4);
-  S.sigTh = clamp(S.sigTh - S.lrDPO * gSig, 0.03, 3);
+  const out = dpoStepCore(S.muTh, S.sigTh, S.dpo.pairs,
+    { betaDPO: S.betaDPO, lr: S.lrDPO });
+  S.muTh = out.mu; S.sigTh = out.sig;
   syncSliders();
   recomputeDPOQuantities();
   renderAll();
@@ -1486,19 +1638,14 @@ function dpoStep() {
    ∇_θ    L_i = -δ_i · β_DRO · ∇_θ log π_θ(a_i)
    ============================================================ */
 function droResidual(a, r) {
-  const logRatio = logGauss(a, S.muTh, S.sigTh) - logGauss(a, S.muRef, S.sigRef);
-  return r - S.Vdro - S.betaDRO * logRatio;
+  return droResidualAt(a, r, S.muTh, S.sigTh, S.Vdro, S.betaDRO);
 }
 
 function droResample() {
-  S.dro.samples = [];
-  S.dro.rewards = [];
+  const b = sampleBatch(S.muRef, S.sigRef, S.NDRO);  // offline: a_i ~ π_ref
+  S.dro.samples = b.samples;
+  S.dro.rewards = b.rewards;
   S.dro.selected = null;
-  for (let i = 0; i < S.NDRO; i++) {
-    const a = S.muRef + S.sigRef * randn();
-    S.dro.samples.push(a);
-    S.dro.rewards.push(reward(a));
-  }
   recomputeDROQuantities();
   renderAll();
 }
@@ -1529,28 +1676,13 @@ function droLossParts() {
 
 function droStep() {
   if (S.dro.samples.length === 0) droResample();
-  const N = S.dro.samples.length;
-  const sig2 = S.sigTh * S.sigTh;
-  const sig3 = sig2 * S.sigTh;
-  let gMu = 0, gSig = 0, gV = 0;
-  for (let i = 0; i < N; i++) {
-    const a = S.dro.samples[i];
-    const d = droResidual(a, S.dro.rewards[i]);
-    // ∇_θ log π_θ(a):  ∂μ = (a-μ)/σ², ∂σ = -1/σ + (a-μ)²/σ³
-    const dlMu  = (a - S.muTh) / sig2;
-    const dlSig = -1/S.sigTh + (a - S.muTh)*(a - S.muTh) / sig3;
-    // ∇_θ L_i = -δ · β · ∇log π_θ
-    gMu  += -d * S.betaDRO * dlMu;
-    gSig += -d * S.betaDRO * dlSig;
-    gV   += -d;
-  }
-  gMu /= N; gSig /= N; gV /= N;
   S.trajDRO.push([S.muTh, S.sigTh]);
   S.trajVdro.push(S.Vdro);
   S.droLossHist.push(droLossParts());     // loss at the pre-update (θ, V)
-  S.muTh  = clamp(S.muTh  - S.lrDROth * gMu,  -4, 4);
-  S.sigTh = clamp(S.sigTh - S.lrDROth * gSig, 0.03, 3);
-  S.Vdro  = clamp(S.Vdro  - S.lrDROv  * gV,  -10, 10);
+  const out = droStepCore(S.muTh, S.sigTh, S.Vdro,
+    { samples: S.dro.samples, rewards: S.dro.rewards },
+    { betaDRO: S.betaDRO, lrTh: S.lrDROth, lrV: S.lrDROv });
+  S.muTh = out.mu; S.sigTh = out.sig; S.Vdro = out.V;
   syncSliders();
   document.getElementById('val-Vdro').textContent = S.Vdro.toFixed(3);
   recomputeDROQuantities();
@@ -1559,16 +1691,16 @@ function droStep() {
 
 /* ============================================================
    COMPARE — run all six algorithms from the same starting
-   (mu_th, sig_th) with hardcoded default hyperparameters,
-   record their trajectories, and restore the policy to start.
-   The actual rendering uses renderLandscape with all six
-   path flags enabled (see the "compare" branch of renderAll).
+   (mu_th, sig_th) with hardcoded default hyperparameters, record
+   their trajectories and J-vs-step curves, and restore the policy.
+   Every update goes through the same *StepCore used by the
+   interactive tabs, so the two paths cannot drift apart.
    ============================================================ */
 const COMPARE_DEFAULTS = {
   lrExact: 0.1,
   NPG: 16, lrPG: 0.05,
-  NPPO: 16, epsPPO: 0.2, lrPPO: 0.05, lrPPOv: 0.2,
-  G: 8, eps: 0.2, lrG: 0.03,
+  NPPO: 16, epsPPO: 0.2, lrPPO: 0.05, lrPPOv: 0.2, Kppo: 4,
+  G: 8, eps: 0.2, lrG: 0.03, Kgrpo: 4,
   betaDPO: 0.5, N: 32, lrDPO: 0.05, prefNoise: 0.5,
   betaDRO: 0.5, NDRO: 32, lrDROth: 0.05, lrDROv: 0.1,
 };
@@ -1578,6 +1710,8 @@ function compareRunAll() {
   const sigStart = S.sigTh;
   const numSteps = parseInt(document.getElementById('cmpSteps').value) || 80;
   const scale    = parseFloat(document.getElementById('cmpScale').value) || 1;
+  const runs     = parseInt(document.getElementById('cmpRuns').value) || 1;
+  if (S.seed > 0) setSeed(S.seed);   // seeded → Run all replays exactly
   // Scale every sample count by the same factor. GRPO needs >=2 for its (G-1)
   // unbiased-std denominator; DPO needs >=1 pair; others just need >=1.
   const D = Object.assign({}, COMPARE_DEFAULTS, {
@@ -1587,185 +1721,110 @@ function compareRunAll() {
     N:    Math.max(1, Math.round(COMPARE_DEFAULTS.N    * scale)),
     NDRO: Math.max(2, Math.round(COMPARE_DEFAULTS.NDRO * scale)),
   });
-  const beta = S.beta;             // KL temperature is shared with the toy model
-  const muR  = S.muRef, sigR = S.sigRef;
 
-  S.trajExact = []; S.trajPG = []; S.trajPPO = []; S.trajGRPO = []; S.trajDPO = []; S.trajDRO = []; S.trajVdro = []; S.dpoAccHist = []; S.droLossHist = [];
+  // One full trajectory per algorithm. `first` lets DRO publish its V
+  // history (used by the DRO tab's baseline panel) for run 0 only.
+  const runners = {
+    exact() {
+      let mu = muStart, sig = sigStart;
+      const traj = [];
+      for (let i = 0; i < numSteps; i++) {
+        traj.push([mu, sig]);
+        [mu, sig] = exactStepCore(mu, sig, D.lrExact);
+      }
+      traj.push([mu, sig]);
+      return traj;
+    },
+    pg() {
+      let mu = muStart, sig = sigStart;
+      const traj = [];
+      for (let i = 0; i < numSteps; i++) {
+        traj.push([mu, sig]);
+        const out = pgStepCore(mu, sig, D.NPG, D.lrPG);
+        mu = out.mu; sig = out.sig;
+      }
+      traj.push([mu, sig]);
+      return traj;
+    },
+    ppo() {
+      let mu = muStart, sig = sigStart, V = 0;
+      let piOldMu = mu, piOldSig = sig, batch = null;
+      const traj = [];
+      for (let i = 0; i < numSteps; i++) {
+        traj.push([mu, sig]);
+        if (i % D.Kppo === 0) {            // refresh π_old every K epochs
+          piOldMu = mu; piOldSig = sig;
+          batch = sampleBatch(piOldMu, piOldSig, D.NPPO);
+        }
+        const out = ppoStepCore(mu, sig, V, batch, piOldMu, piOldSig,
+                                { eps: D.epsPPO, lr: D.lrPPO, lrV: D.lrPPOv });
+        mu = out.mu; sig = out.sig; V = out.V;
+      }
+      traj.push([mu, sig]);
+      return traj;
+    },
+    grpo() {
+      let mu = muStart, sig = sigStart;
+      let piOldMu = mu, piOldSig = sig, batch = null;
+      const traj = [];
+      for (let i = 0; i < numSteps; i++) {
+        traj.push([mu, sig]);
+        if (i % D.Kgrpo === 0) {           // refresh π_old every K epochs
+          piOldMu = mu; piOldSig = sig;
+          batch = sampleBatch(piOldMu, piOldSig, D.G);
+        }
+        const out = grpoStepCore(mu, sig, batch, piOldMu, piOldSig,
+                                 { eps: D.eps, lr: D.lrG });
+        mu = out.mu; sig = out.sig;
+      }
+      traj.push([mu, sig]);
+      return traj;
+    },
+    dpo() {
+      // preference pairs sampled once from π_ref, then re-used (offline)
+      let mu = muStart, sig = sigStart;
+      const pairs = dpoMakePairs(D.N, D.prefNoise);
+      const traj = [];
+      for (let i = 0; i < numSteps; i++) {
+        traj.push([mu, sig]);
+        const out = dpoStepCore(mu, sig, pairs, { betaDPO: D.betaDPO, lr: D.lrDPO });
+        mu = out.mu; sig = out.sig;
+      }
+      traj.push([mu, sig]);
+      return traj;
+    },
+    dro(first) {
+      // offline (a_i ~ π_ref), jointly fit θ and V; V starts at 0
+      let mu = muStart, sig = sigStart, V = 0;
+      const data = sampleBatch(S.muRef, S.sigRef, D.NDRO);
+      const traj = [], vtraj = [];
+      for (let i = 0; i < numSteps; i++) {
+        traj.push([mu, sig]);
+        vtraj.push(V);
+        const out = droStepCore(mu, sig, V, data,
+                                { betaDRO: D.betaDRO, lrTh: D.lrDROth, lrV: D.lrDROv });
+        mu = out.mu; sig = out.sig; V = out.V;
+      }
+      traj.push([mu, sig]);
+      vtraj.push(V);
+      if (first) S.trajVdro = vtraj;
+      return traj;
+    },
+  };
 
-  // 1) Exact gradient — deterministic
-  let mu = muStart, sig = sigStart;
-  for (let i = 0; i < numSteps; i++) {
-    S.trajExact.push([mu, sig]);
-    const [gMu, gSig] = gradJ(mu, sig);
-    mu  = clamp(mu  + D.lrExact * gMu,  -4, 4);
-    sig = clamp(sig + D.lrExact * gSig, 0.03, 3);
+  S.trajVdro = []; S.dpoAccHist = []; S.droLossHist = [];
+  S.cmpJ = {};
+  const trajKey = { exact: 'trajExact', pg: 'trajPG', ppo: 'trajPPO',
+                    grpo: 'trajGRPO', dpo: 'trajDPO', dro: 'trajDRO' };
+  for (const algo of Object.keys(runners)) {
+    const nRuns = (algo === 'exact') ? 1 : runs;   // exact is deterministic
+    S.cmpJ[algo] = [];
+    for (let k = 0; k < nRuns; k++) {
+      const traj = runners[algo](k === 0);
+      if (k === 0) S[trajKey[algo]] = traj;        // map shows the first run
+      S.cmpJ[algo].push(traj.map(pt => objective(pt[0], pt[1])));
+    }
   }
-  S.trajExact.push([mu, sig]);
-
-  // 2) PG — REINFORCE with the in-batch mean as a baseline
-  mu = muStart; sig = sigStart;
-  for (let i = 0; i < numSteps; i++) {
-    S.trajPG.push([mu, sig]);
-    const sig2 = sig*sig, sig3 = sig2*sig;
-    let gMu = 0, gSig = 0, rmean = 0;
-    const samples = new Array(D.NPG), rewards = new Array(D.NPG);
-    for (let k = 0; k < D.NPG; k++) {
-      samples[k] = mu + sig*randn();
-      rewards[k] = reward(samples[k]);
-      rmean += rewards[k];
-    }
-    rmean /= D.NPG;
-    for (let k = 0; k < D.NPG; k++) {
-      const a = samples[k], A = rewards[k] - rmean;
-      gMu  += (1/D.NPG) * A * ((a - mu) / sig2);
-      gSig += (1/D.NPG) * A * (-1/sig + (a - mu)*(a - mu) / sig3);
-    }
-    const [gkmu, gksig] = gradKLAt(mu, sig, muR, sigR);
-    gMu  -= beta * gkmu;
-    gSig -= beta * gksig;
-    mu  = clamp(mu  + D.lrPG * gMu,  -4, 4);
-    sig = clamp(sig + D.lrPG * gSig, 0.03, 3);
-  }
-  S.trajPG.push([mu, sig]);
-
-  // 3) PPO — clipped surrogate with a learned scalar baseline V;
-  //         π_old refreshes each step (same cadence as GRPO).
-  mu = muStart; sig = sigStart;
-  let Vppo = 0;
-  for (let i = 0; i < numSteps; i++) {
-    S.trajPPO.push([mu, sig]);
-    const piOldMu = mu, piOldSig = sig;
-    const samples = new Array(D.NPPO), rewards = new Array(D.NPPO);
-    let rmean = 0;
-    for (let k = 0; k < D.NPPO; k++) {
-      samples[k] = piOldMu + piOldSig*randn();
-      rewards[k] = reward(samples[k]);
-      rmean += rewards[k];
-    }
-    rmean /= D.NPPO;
-    const sig2 = sig*sig, sig3 = sig2*sig;
-    let gMu = 0, gSig = 0;
-    for (let k = 0; k < D.NPPO; k++) {
-      const a = samples[k];
-      const A = rewards[k] - Vppo;
-      const rho = Math.exp(logGauss(a, mu, sig) - logGauss(a, piOldMu, piOldSig));
-      const isClippedAbove = (A > 0 && rho > 1+D.epsPPO);
-      const isClippedBelow = (A < 0 && rho < 1-D.epsPPO);
-      if (isClippedAbove || isClippedBelow) continue;
-      gMu  += (1/D.NPPO) * rho * A * ((a - mu) / sig2);
-      gSig += (1/D.NPPO) * rho * A * (-1/sig + (a - mu)*(a - mu) / sig3);
-    }
-    const [gkmu, gksig] = gradKLAt(mu, sig, muR, sigR);
-    gMu  -= beta * gkmu;
-    gSig -= beta * gksig;
-    mu   = clamp(mu  + D.lrPPO * gMu,  -4, 4);
-    sig  = clamp(sig + D.lrPPO * gSig, 0.03, 3);
-    Vppo = clamp(Vppo + D.lrPPOv * (rmean - Vppo), -10, 10);
-  }
-  S.trajPPO.push([mu, sig]);
-
-  // 4) GRPO — clipped, group-normalized; pi_old refreshes each step
-  mu = muStart; sig = sigStart;
-  for (let i = 0; i < numSteps; i++) {
-    S.trajGRPO.push([mu, sig]);
-    const piOldMu = mu, piOldSig = sig;
-    const samples = new Array(D.G), rewards = new Array(D.G);
-    let rmean = 0;
-    for (let k = 0; k < D.G; k++) {
-      samples[k] = piOldMu + piOldSig*randn();
-      rewards[k] = reward(samples[k]);
-      rmean += rewards[k];
-    }
-    rmean /= D.G;
-    let m2 = 0;
-    for (let k = 0; k < D.G; k++) m2 += (rewards[k]-rmean)*(rewards[k]-rmean);
-    const std = Math.max(0.05, Math.sqrt(m2 / Math.max(1, D.G-1)));
-    const sig2 = sig*sig, sig3 = sig2*sig;
-    let gMu = 0, gSig = 0;
-    for (let k = 0; k < D.G; k++) {
-      const a = samples[k];
-      const A = (rewards[k] - rmean) / std;
-      const rho = Math.exp(logGauss(a, mu, sig) - logGauss(a, piOldMu, piOldSig));
-      const isClippedAbove = (A > 0 && rho > 1+D.eps);
-      const isClippedBelow = (A < 0 && rho < 1-D.eps);
-      if (isClippedAbove || isClippedBelow) continue;
-      gMu  += (1/D.G) * rho * A * ((a - mu) / sig2);
-      gSig += (1/D.G) * rho * A * (-1/sig + (a - mu)*(a - mu) / sig3);
-    }
-    const [gkmu, gksig] = gradKLAt(mu, sig, muR, sigR);
-    gMu  -= beta * gkmu;
-    gSig -= beta * gksig;
-    mu  = clamp(mu  + D.lrG * gMu,  -4, 4);
-    sig = clamp(sig + D.lrG * gSig, 0.03, 3);
-  }
-  S.trajGRPO.push([mu, sig]);
-
-  // 5) DPO — preference pairs sampled once from pi_ref, then re-used
-  mu = muStart; sig = sigStart;
-  const pairs = [];
-  for (let k = 0; k < D.N; k++) {
-    const a = muR + sigR*randn();
-    const b = muR + sigR*randn();
-    const dr = reward(a) - reward(b);
-    let aw, al;
-    if (D.prefNoise < 1e-3) {
-      aw = (dr >= 0) ? a : b;
-      al = (dr >= 0) ? b : a;
-    } else {
-      const p = sigmoid(dr / D.prefNoise);
-      if (Math.random() < p) { aw = a; al = b; } else { aw = b; al = a; }
-    }
-    pairs.push({aw, al});
-  }
-  for (let i = 0; i < numSteps; i++) {
-    S.trajDPO.push([mu, sig]);
-    const sig2 = sig*sig, sig3 = sig2*sig;
-    let gMu = 0, gSig = 0;
-    for (const p of pairs) {
-      const lw = logGauss(p.aw, mu, sig) - logGauss(p.aw, muR, sigR);
-      const ll = logGauss(p.al, mu, sig) - logGauss(p.al, muR, sigR);
-      const h = D.betaDPO * (lw - ll);
-      const w = sigmoid(-h);
-      const dlMu  = ((p.aw - mu) - (p.al - mu)) / sig2;
-      const dlSig = ((p.aw - mu)*(p.aw - mu) - (p.al - mu)*(p.al - mu)) / sig3;
-      gMu  += -w * D.betaDPO * dlMu;
-      gSig += -w * D.betaDPO * dlSig;
-    }
-    gMu /= pairs.length; gSig /= pairs.length;
-    mu  = clamp(mu  - D.lrDPO * gMu,  -4, 4);
-    sig = clamp(sig - D.lrDPO * gSig, 0.03, 3);
-  }
-  S.trajDPO.push([mu, sig]);
-
-  // 6) DRO — offline (a_i ~ pi_ref), jointly fit theta and V
-  mu = muStart; sig = sigStart;
-  let Vlocal = 0;  // start V at 0, independent of S.Vdro
-  const droSamples = [], droRewards = [];
-  for (let k = 0; k < D.NDRO; k++) {
-    const a = muR + sigR*randn();
-    droSamples.push(a);
-    droRewards.push(reward(a));
-  }
-  for (let i = 0; i < numSteps; i++) {
-    S.trajDRO.push([mu, sig]);
-    S.trajVdro.push(Vlocal);
-    const sig2 = sig*sig, sig3 = sig2*sig;
-    let gMu = 0, gSig = 0, gV = 0;
-    for (let k = 0; k < droSamples.length; k++) {
-      const a = droSamples[k];
-      const lr_ = logGauss(a, mu, sig) - logGauss(a, muR, sigR);
-      const d = droRewards[k] - Vlocal - D.betaDRO*lr_;
-      gMu  += -d * D.betaDRO * ((a - mu) / sig2);
-      gSig += -d * D.betaDRO * (-1/sig + (a - mu)*(a - mu) / sig3);
-      gV   += -d;
-    }
-    gMu /= droSamples.length; gSig /= droSamples.length; gV /= droSamples.length;
-    mu     = clamp(mu     - D.lrDROth * gMu,  -4, 4);
-    sig    = clamp(sig    - D.lrDROth * gSig, 0.03, 3);
-    Vlocal = clamp(Vlocal - D.lrDROv  * gV,  -10, 10);
-  }
-  S.trajDRO.push([mu, sig]);
-  S.trajVdro.push(Vlocal);
 
   // Restore the live policy to its starting point so the user can re-run
   // (or move the dot and re-run from a different starting point).
@@ -1775,24 +1834,85 @@ function compareRunAll() {
   renderAll();
 }
 
-// Parameterized version of gradKL — independent of S, used inside compareRunAll.
-function gradKLAt(mu, sig, muR, sigR) {
-  const gMu  = (mu - muR) / (sigR*sigR);
-  const gSig = -1/sig + sig/(sigR*sigR);
-  return [gMu, gSig];
-}
-
 /* ============================================================
    UTILS
    ============================================================ */
 function clamp(x, a, b) { return Math.max(a, Math.min(b, x)); }
 function fmt(x, d=3) { return (x>=0?" ":"") + x.toFixed(d); }
-function clearTraj() { S.trajExact = []; S.trajPG = []; S.trajPPO = []; S.trajGRPO = []; S.trajDPO = []; S.trajDRO = []; S.trajVdro = []; S.dpoAccHist = []; S.droLossHist = []; renderAll(); }
+function clearTraj() { S.trajExact = []; S.trajPG = []; S.trajPPO = []; S.trajGRPO = []; S.trajDPO = []; S.trajDRO = []; S.trajVdro = []; S.dpoAccHist = []; S.droLossHist = []; S.cmpJ = null; renderAll(); }
 function syncSliders() {
   document.getElementById('mu').value  = S.muTh;
   document.getElementById('sig').value = S.sigTh;
   document.getElementById('val-mu').textContent  = S.muTh.toFixed(2);
   document.getElementById('val-sig').textContent = S.sigTh.toFixed(2);
+}
+
+// Coalesce bursts of slider input into one render per animation frame.
+let _renderQueued = false;
+function requestRender() {
+  if (_renderQueued) return;
+  _renderQueued = true;
+  requestAnimationFrame(() => { _renderQueued = false; renderAll(); });
+}
+
+/* ============================================================
+   URL HASH STATE — serialize the controls into location.hash so a
+   configuration is shareable as a link. Only values that differ
+   from their HTML defaults are written; an empty config clears
+   the hash entirely.
+   ============================================================ */
+const HASH_SLIDER_IDS = [
+  'muRef','sigRef','beta','mu','sig','lrExact','NPG','lrPG',
+  'NPPO','epsPPO','lrPPO','lrPPOv','Kppo','G','eps','lrG','Kgrpo',
+  'betaDPO','N','lrDPO','prefNoise','betaDRO','NDRO','lrDROth','lrDROv',
+  'cmpSteps','cmpScale','cmpRuns',
+];
+const TAB_NAMES = ['rlhf','pg','ppo','grpo','dpo','dro','compare'];
+
+let _hashTimer = null;
+function scheduleHashWrite() {
+  clearTimeout(_hashTimer);
+  _hashTimer = setTimeout(writeHash, 250);
+}
+function writeHash() {
+  const parts = [];
+  for (const id of HASH_SLIDER_IDS) {
+    const el = document.getElementById(id);
+    if (el && el.value !== el.defaultValue) parts.push(`${id}=${el.value}`);
+  }
+  if (S.rewardPreset !== 'single') parts.push(`rewardPreset=${S.rewardPreset}`);
+  if (S.seed > 0) parts.push(`seed=${S.seed}`);
+  const tab = document.body.getAttribute('data-active-tab');
+  if (tab !== 'rlhf') parts.push(`tab=${tab}`);
+  history.replaceState(null, '',
+    parts.length ? '#' + parts.join('&') : location.pathname + location.search);
+}
+function readHash() {
+  if (!location.hash || location.hash.length < 2) return;
+  const params = new URLSearchParams(location.hash.slice(1));
+  for (const id of HASH_SLIDER_IDS) {
+    const v = params.get(id);
+    if (v === null) continue;
+    const el = document.getElementById(id);
+    if (!el) continue;
+    el.value = v;
+    // Re-use the slider's own input handler to update S and the readout.
+    el.dispatchEvent(new Event('input'));
+  }
+  const preset = params.get('rewardPreset');
+  if (preset && REWARD_PRESETS[preset]) {
+    S.rewardPreset = preset;
+    document.getElementById('rewardPreset').value = preset;
+  }
+  const seed = parseInt(params.get('seed'));
+  if (seed > 0) {
+    S.seed = seed;
+    setSeed(seed);
+    document.getElementById('seedInput').value = seed;
+    document.getElementById('val-seed').textContent = String(seed);
+  }
+  const tab = params.get('tab');
+  if (tab && TAB_NAMES.includes(tab)) setTab(tab);
 }
 
 /* ============================================================
@@ -1805,23 +1925,24 @@ function renderDensities(starInfo) {
   // Scale reward for visual overlay onto density axis (right axis)
   const traces = [
     { x: A_GRID, y: rArr, name: "r(a)", yaxis: "y2",
-      mode: "lines", line: { color: "#b07b1c", width: 1.5 },
+      mode: "lines", line: { color: C.reward, width: 1.5 },
       fill: "tozeroy", fillcolor: "rgba(176,123,28,0.18)", hoverinfo: "x+y" },
     { x: A_GRID, y: pref, name: "π<sub>ref</sub>",
-      mode: "lines", line: { color: "#6b6b6b", width: 2, dash: "dot" } },
+      mode: "lines", line: { color: C.ref, width: 2, dash: "dot" } },
     { x: A_GRID, y: starInfo.pdf, name: "π<sup>★</sup>",
-      mode: "lines", line: { color: "#2a8e4a", width: 2.5 },
+      mode: "lines", line: { color: C.star, width: 2.5 },
       fill: "tozeroy", fillcolor: "rgba(42,142,74,0.10)" },
     { x: A_GRID, y: pi, name: "π<sub>θ</sub>",
-      mode: "lines", line: { color: "#c0392b", width: 3 },
+      mode: "lines", line: { color: C.pi, width: 3 },
       fill: "tozeroy", fillcolor: "rgba(192,57,43,0.12)" },
   ];
   const layout = {
     margin: { l: 50, r: 60, t: 6, b: 36 },
     xaxis: { title: "action&nbsp; <i>a</i>", range: [A_MIN, A_MAX], gridcolor: "#eee", zeroline: false },
     yaxis: { title: "density", gridcolor: "#eee", zeroline: false, rangemode: "tozero" },
-    yaxis2: { title: "reward&nbsp; <i>r</i>(<i>a</i>)", overlaying: "y", side: "right",
-              showgrid: false, zeroline: false, titlefont: { color: "#b07b1c" }, tickfont: { color: "#b07b1c" } },
+    yaxis2: { title: { text: "reward&nbsp; <i>r</i>(<i>a</i>)", font: { color: C.reward } },
+              overlaying: "y", side: "right",
+              showgrid: false, zeroline: false, tickfont: { color: C.reward } },
     plot_bgcolor: "#ffffff", paper_bgcolor: "#ffffff",
     legend: { orientation: "h", x: 0, y: 1.12, font: { size: 12 } },
     font: { family: "Inter Tight, sans-serif", size: 12, color: "#1a1a1a" },
@@ -1840,7 +1961,12 @@ const LAND_MU = new Array(LAND_MU_N), LAND_SIG = new Array(LAND_SIG_N);
 for (let i = 0; i < LAND_MU_N; i++) LAND_MU[i] = LAND_MU_MIN + (LAND_MU_MAX-LAND_MU_MIN)*i/(LAND_MU_N-1);
 for (let j = 0; j < LAND_SIG_N; j++) LAND_SIG[j] = LAND_SIG_MIN + (LAND_SIG_MAX-LAND_SIG_MIN)*j/(LAND_SIG_N-1);
 
+// The surface depends only on (preset, β, π_ref) — cache it so play
+// loops and trajectory redraws don't recompute 61×51 objectives a frame.
+let _landCache = { key: "", Z: null };
 function computeLandscape() {
+  const key = `${S.rewardPreset}|${S.beta}|${S.muRef}|${S.sigRef}`;
+  if (_landCache.key === key) return _landCache.Z;
   const Z = new Array(LAND_SIG_N);
   for (let j = 0; j < LAND_SIG_N; j++) {
     Z[j] = new Array(LAND_MU_N);
@@ -1848,6 +1974,7 @@ function computeLandscape() {
       Z[j][i] = objective(LAND_MU[i], LAND_SIG[j]);
     }
   }
+  _landCache = { key, Z };
   return Z;
 }
 
@@ -1866,51 +1993,33 @@ function renderLandscape(starInfo, targetPlot="plot-landscape", showTraj=false,
     },
     { x: [starInfo.muStar], y: [starInfo.sigStar],
       mode: "markers", name: "π<sup>★</sup>",
-      marker: { color: "#2a8e4a", size: 14, line: { color: "white", width: 2 }, symbol: "star" },
+      marker: { color: C.star, size: 14, line: { color: "white", width: 2 }, symbol: "star" },
       hovertemplate: "π<sup>★</sup> (μ=%{x:.2f}, σ=%{y:.2f})<extra></extra>",
       showlegend: cornerLegend },
     { x: [S.muTh], y: [S.sigTh],
       mode: "markers", name: "π<sub>θ</sub>",
-      marker: { color: "#c0392b", size: 14, line: { color: "white", width: 2 } },
+      marker: { color: C.pi, size: 14, line: { color: "white", width: 2 } },
       hovertemplate: "π<sub>θ</sub> (μ=%{x:.2f}, σ=%{y:.2f})<extra></extra>",
       showlegend: cornerLegend },
   ];
   if (showTraj) {
-    if (paths.exact && S.trajExact.length > 0) {
-      const xs = S.trajExact.map(p=>p[0]).concat([S.muTh]);
-      const ys = S.trajExact.map(p=>p[1]).concat([S.sigTh]);
-      traces.push({ x: xs, y: ys, mode: "lines+markers", name: "exact ∇J path",
-        line: { color: "#1f4f8b", width: 2 }, marker: { size: 4, color: "#1f4f8b" } });
-    }
-    if (paths.pg && S.trajPG.length > 0) {
-      const xs = S.trajPG.map(p=>p[0]).concat([S.muTh]);
-      const ys = S.trajPG.map(p=>p[1]).concat([S.sigTh]);
-      traces.push({ x: xs, y: ys, mode: "lines+markers", name: "PG path",
-        line: { color: "#d35e7f", width: 2, dash: "dash" }, marker: { size: 4, color: "#d35e7f" } });
-    }
-    if (paths.ppo && S.trajPPO.length > 0) {
-      const xs = S.trajPPO.map(p=>p[0]).concat([S.muTh]);
-      const ys = S.trajPPO.map(p=>p[1]).concat([S.sigTh]);
-      traces.push({ x: xs, y: ys, mode: "lines+markers", name: "PPO path",
-        line: { color: "#a0522d", width: 2, dash: "dashdot" }, marker: { size: 4, color: "#a0522d" } });
-    }
-    if (paths.grpo && S.trajGRPO.length > 0) {
-      const xs = S.trajGRPO.map(p=>p[0]).concat([S.muTh]);
-      const ys = S.trajGRPO.map(p=>p[1]).concat([S.sigTh]);
-      traces.push({ x: xs, y: ys, mode: "lines+markers", name: "GRPO path",
-        line: { color: "#c0392b", width: 2, dash: "dot" }, marker: { size: 4, color: "#c0392b" } });
-    }
-    if (paths.dpo && S.trajDPO.length > 0) {
-      const xs = S.trajDPO.map(p=>p[0]).concat([S.muTh]);
-      const ys = S.trajDPO.map(p=>p[1]).concat([S.sigTh]);
-      traces.push({ x: xs, y: ys, mode: "lines+markers", name: "DPO path",
-        line: { color: "#7d3c98", width: 2, dash: "dashdot" }, marker: { size: 4, color: "#7d3c98" } });
-    }
-    if (paths.dro && S.trajDRO.length > 0) {
-      const xs = S.trajDRO.map(p=>p[0]).concat([S.muTh]);
-      const ys = S.trajDRO.map(p=>p[1]).concat([S.sigTh]);
-      traces.push({ x: xs, y: ys, mode: "lines+markers", name: "DRO path",
-        line: { color: "#0e8388", width: 2, dash: "longdash" }, marker: { size: 4, color: "#0e8388" } });
+    const PATH_STYLES = [
+      ['exact', S.trajExact, C.accent, undefined,  'exact ∇J path'],
+      ['pg',    S.trajPG,    C.pg,     'dash',     'PG path'],
+      ['ppo',   S.trajPPO,   C.ppo,    'dashdot',  'PPO path'],
+      ['grpo',  S.trajGRPO,  C.pi,     'dot',      'GRPO path'],
+      ['dpo',   S.trajDPO,   C.dpo,    'dashdot',  'DPO path'],
+      ['dro',   S.trajDRO,   C.dro,    'longdash', 'DRO path'],
+    ];
+    for (const [key, traj, color, dash, name] of PATH_STYLES) {
+      if (!paths[key] || traj.length === 0) continue;
+      // While stepping interactively the path connects to the live dot;
+      // on the Compare tab (cornerLegend) the dot is the *start*, so a
+      // closing segment back to it would be misleading.
+      const xs = traj.map(p => p[0]).concat(cornerLegend ? [] : [S.muTh]);
+      const ys = traj.map(p => p[1]).concat(cornerLegend ? [] : [S.sigTh]);
+      traces.push({ x: xs, y: ys, mode: "lines+markers", name,
+        line: { color, width: 2, dash }, marker: { size: 4, color } });
     }
   }
   const layout = {
@@ -1954,7 +2063,7 @@ function renderGRPOPanels() {
     mode: "markers", name: "samples",
     marker: {
       size: 14, color: S.grpo.rewards,
-      colorscale: [[0,"#d8d4c8"],[1,"#b07b1c"]],
+      colorscale: [[0,"#d8d4c8"],[1,C.reward]],
       cmin: rMin, cmax: rMax,
       line: { color: "white", width: 1.5 },
     },
@@ -1963,9 +2072,9 @@ function renderGRPOPanels() {
   };
   Plotly.react("plot-grpoSamples", [
     { x: A_GRID, y: piOldY, mode:"lines", line:{color:"#999", dash:"dot", width:1.5}, name:"π<sub>old</sub>", yaxis:"y2", hoverinfo:"skip" },
-    { x: A_GRID, y: piY,    mode:"lines", line:{color:"#c0392b", width:2}, name:"π<sub>θ</sub>", yaxis:"y2", hoverinfo:"skip" },
+    { x: A_GRID, y: piY,    mode:"lines", line:{color:C.pi, width:2}, name:"π<sub>θ</sub>", yaxis:"y2", hoverinfo:"skip" },
     samplesTrace,
-    { x: [S.muTh, S.muTh], y: [-0.5, 0.5], mode:"lines", line:{color:"#c0392b", width:1.5, dash:"dash"}, hoverinfo:"skip", showlegend: false },
+    { x: [S.muTh, S.muTh], y: [-0.5, 0.5], mode:"lines", line:{color:C.pi, width:1.5, dash:"dash"}, hoverinfo:"skip", showlegend: false },
   ], {
     margin:{l:40, r:46, t:6, b:30},
     xaxis: { title: "action&nbsp; <i>a</i>", range:[A_MIN,A_MAX], gridcolor:"#eee", zeroline:false },
@@ -1977,7 +2086,7 @@ function renderGRPOPanels() {
   }, { displayModeBar:false, responsive:true });
 
   // Panel B: advantage bars
-  const advColors = S.grpo.advs.map(a => a >= 0 ? "#2a8e4a" : "#c0392b");
+  const advColors = S.grpo.advs.map(a => a >= 0 ? C.star : C.pi);
   const idx = Array.from({length:G}, (_,i)=>i+1);
   Plotly.react("plot-grpoAdv", [
     { x: idx, y: S.grpo.advs, type:"bar", marker:{color: advColors}, name:"Â",
@@ -2003,7 +2112,7 @@ function renderGRPOPanels() {
         color: S.grpo.ratios.map((rho,i) => {
           const A = S.grpo.advs[i];
           const clipped = (A>0 && rho>1+eps) || (A<0 && rho<1-eps);
-          return clipped ? "#999" : (A>=0 ? "#2a8e4a" : "#c0392b");
+          return clipped ? "#999" : (A>=0 ? C.star : C.pi);
         }),
         line:{color:"white", width:1}
       },
@@ -2020,7 +2129,7 @@ function renderGRPOPanels() {
   // Panel D: surrogate per sample
   Plotly.react("plot-grpoSurr", [
     { x: idx, y: S.grpo.surr, type:"bar",
-      marker:{color: S.grpo.surr.map(v => v >= 0 ? "#2a8e4a" : "#c0392b")},
+      marker:{color: S.grpo.surr.map(v => v >= 0 ? C.star : C.pi)},
       hovertemplate: "i=%{x}<br>min(ρ<sub>i</sub>Â<sub>i</sub>, clip)=%{y:.3f}<extra></extra>",
       showlegend:false }
   ], {
@@ -2057,18 +2166,18 @@ function renderPPOPanels() {
   const rMax   = Math.max(...S.ppo.rewards);
   Plotly.react("plot-ppoSamples", [
     { x: A_GRID, y: piOldY, mode:"lines", line:{color:"#999", dash:"dot", width:1.5}, name:"π<sub>old</sub>", yaxis:"y2", hoverinfo:"skip" },
-    { x: A_GRID, y: piY,    mode:"lines", line:{color:"#c0392b", width:2}, name:"π<sub>θ</sub>", yaxis:"y2", hoverinfo:"skip" },
+    { x: A_GRID, y: piY,    mode:"lines", line:{color:C.pi, width:2}, name:"π<sub>θ</sub>", yaxis:"y2", hoverinfo:"skip" },
     { x: S.ppo.samples, y: S.ppo.samples.map(() => 0), mode:"markers", name:"samples",
       marker: {
         size: 14, color: S.ppo.rewards,
-        colorscale: [[0,"#d8d4c8"],[1,"#a0522d"]],
+        colorscale: [[0,"#d8d4c8"],[1,C.ppo]],
         cmin: rMin, cmax: rMax,
         line: { color: "white", width: 1.5 },
       },
       hovertemplate: "a=%{x:.2f}<br>r=%{marker.color:.3f}<extra></extra>",
       yaxis: "y" },
     { x: [S.muTh, S.muTh], y: [-0.5, 0.5], mode:"lines",
-      line:{color:"#c0392b", width:1.5, dash:"dash"}, hoverinfo:"skip", showlegend: false },
+      line:{color:C.pi, width:1.5, dash:"dash"}, hoverinfo:"skip", showlegend: false },
   ], {
     margin:{l:40, r:46, t:6, b:30},
     xaxis: { title: "action&nbsp; <i>a</i>", range:[A_MIN,A_MAX], gridcolor:"#eee", zeroline:false },
@@ -2079,7 +2188,7 @@ function renderPPOPanels() {
     font:{family:"Inter Tight, sans-serif", size:11},
   }, { displayModeBar:false, responsive:true });
 
-  const advColors = S.ppo.advs.map(a => a >= 0 ? "#2a8e4a" : "#c0392b");
+  const advColors = S.ppo.advs.map(a => a >= 0 ? C.star : C.pi);
   const idx = Array.from({length:N}, (_,i)=>i+1);
   Plotly.react("plot-ppoAdv", [
     { x: [0.5, N+0.5], y: [0, 0], mode:"lines", line:{color:"#999", width:0.8}, hoverinfo:"skip", showlegend:false },
@@ -2106,7 +2215,7 @@ function renderPPOPanels() {
         color: S.ppo.ratios.map((rho,i) => {
           const A = S.ppo.advs[i];
           const clipped = (A>0 && rho>1+eps) || (A<0 && rho<1-eps);
-          return clipped ? "#999" : (A>=0 ? "#2a8e4a" : "#c0392b");
+          return clipped ? "#999" : (A>=0 ? C.star : C.pi);
         }),
         line:{color:"white", width:1}
       },
@@ -2122,7 +2231,7 @@ function renderPPOPanels() {
 
   Plotly.react("plot-ppoSurr", [
     { x: idx, y: S.ppo.surr, type:"bar",
-      marker:{color: S.ppo.surr.map(v => v >= 0 ? "#2a8e4a" : "#c0392b")},
+      marker:{color: S.ppo.surr.map(v => v >= 0 ? C.star : C.pi)},
       hovertemplate: "i=%{x}<br>min(ρ<sub>i</sub>Â<sub>i</sub>, clip)=%{y:.3f}<extra></extra>",
       showlegend:false }
   ], {
@@ -2155,18 +2264,18 @@ function renderPGPanels() {
   const rMin = Math.min(...S.pg.rewards);
   const rMax = Math.max(...S.pg.rewards);
   Plotly.react("plot-pgSamples", [
-    { x: A_GRID, y: piY, mode:"lines", line:{color:"#c0392b", width:2}, name:"π<sub>θ</sub>", yaxis:"y2", hoverinfo:"skip" },
+    { x: A_GRID, y: piY, mode:"lines", line:{color:C.pi, width:2}, name:"π<sub>θ</sub>", yaxis:"y2", hoverinfo:"skip" },
     { x: S.pg.samples, y: S.pg.samples.map(() => 0), mode:"markers",
       marker: {
         size: 14, color: S.pg.rewards,
-        colorscale: [[0,"#d8d4c8"],[1,"#d35e7f"]],
+        colorscale: [[0,"#d8d4c8"],[1,C.pg]],
         cmin: rMin, cmax: rMax,
         line: { color: "white", width: 1.5 },
       },
       hovertemplate: "a=%{x:.2f}<br>r=%{marker.color:.3f}<extra></extra>",
       yaxis: "y", showlegend: false },
     { x: [S.muTh, S.muTh], y: [-0.5, 0.5], mode:"lines",
-      line:{color:"#c0392b", width:1.5, dash:"dash"}, hoverinfo:"skip", showlegend:false },
+      line:{color:C.pi, width:1.5, dash:"dash"}, hoverinfo:"skip", showlegend:false },
   ], {
     margin:{l:40, r:46, t:6, b:30},
     xaxis: { title: "action&nbsp; <i>a</i>", range:[A_MIN,A_MAX], gridcolor:"#eee", zeroline:false },
@@ -2177,7 +2286,7 @@ function renderPGPanels() {
     font:{family:"Inter Tight, sans-serif", size:11},
   }, { displayModeBar:false, responsive:true });
 
-  const advColors = S.pg.advs.map(a => a >= 0 ? "#2a8e4a" : "#c0392b");
+  const advColors = S.pg.advs.map(a => a >= 0 ? C.star : C.pi);
   const idx = Array.from({length:N}, (_,i)=>i+1);
   Plotly.react("plot-pgAdv", [
     { x: idx, y: S.pg.advs, type:"bar", marker:{color: advColors}, name:"Â",
@@ -2230,7 +2339,7 @@ function renderDPOPanels() {
       marker: {
         size: scatterSizes,
         color: drs,
-        colorscale: [[0,"#c0392b"],[0.5,"#d8d4c8"],[1,"#2a8e4a"]],
+        colorscale: [[0,C.pi],[0.5,"#d8d4c8"],[1,C.star]],
         cmin: -drAbs, cmax: drAbs,
         line: { color: scatterLineC, width: scatterLineW },
         colorbar: { title:"Δr", thickness:10, len:0.85, x:1.02, tickfont:{size:10} },
@@ -2254,7 +2363,7 @@ function renderDPOPanels() {
   const selRank = sel == null ? -1 : origIdx.indexOf(sel);
   const barColor = ys.map((v, k) => {
     if (k === selRank) return "#f1c40f";
-    return v >= 0 ? "#7d3c98" : "#c0392b";
+    return v >= 0 ? C.dpo : C.pi;
   });
   const barLineW = ys.map((_, k) => k === selRank ? 2.5 : 0);
   const barLineC = ys.map((_, k) => k === selRank ? "#111" : "#000");
@@ -2307,16 +2416,16 @@ function renderDPOAccuracy() {
     { x:[0, xMax], y:[50, 50], mode:"lines",
       line:{ color:"#ddd", width:1, dash:"dot" }, hoverinfo:"skip", showlegend:false },
     { x:xs, y:refY, mode:"lines", name:"π_ref alone",
-      line:{ color:"#6b6b6b", width:1.4, dash:"dash" },
+      line:{ color:C.ref, width:1.4, dash:"dash" },
       hovertemplate:"step %{x}<br>π_ref acc = %{y:.0f}%<extra></extra>", showlegend:false },
     { x:xs, y:piY, mode:"lines+markers", name:"π_θ alone",
-      line:{ color:"#c0392b", width:1.6 }, marker:{ size:4, color:"#c0392b" },
+      line:{ color:C.pi, width:1.6 }, marker:{ size:4, color:C.pi },
       hovertemplate:"step %{x}<br>π_θ acc = %{y:.0f}%<extra></extra>", showlegend:false },
     { x:xs, y:accY, mode:"lines+markers", name:"implicit margin",
-      line:{ color:"#7d3c98", width:2.4 }, marker:{ size:5, color:"#7d3c98" },
+      line:{ color:C.dpo, width:2.4 }, marker:{ size:5, color:C.dpo },
       hovertemplate:"step %{x}<br>DPO acc = %{y:.0f}%<extra></extra>", showlegend:false },
     { x:[xs[xs.length-1]], y:[accY[accY.length-1]], mode:"markers",
-      marker:{ size:11, color:"#7d3c98", line:{ color:"white", width:2 } },
+      marker:{ size:11, color:C.dpo, line:{ color:"white", width:2 } },
       hovertemplate:`current = ${accY[accY.length-1].toFixed(0)}%<extra></extra>`, showlegend:false },
   ], {
     margin:{ l:48, r:14, t:6, b:36 },
@@ -2377,14 +2486,14 @@ function renderDROPanels() {
   const refY  = A_GRID.map(a => gauss(a, S.muRef, S.sigRef));
   Plotly.react("plot-droSamples", [
     { x: A_GRID, y: rArr, mode:"lines", name:"r(a)",
-      line:{color:"#b07b1c", width:1.5}, fill:"tozeroy",
+      line:{color:C.reward, width:1.5}, fill:"tozeroy",
       fillcolor:"rgba(176,123,28,0.10)", hoverinfo:"skip", showlegend:false },
     { x: A_GRID, y: refY, mode:"lines", name:"π<sub>ref</sub>", yaxis:"y2",
-      line:{color:"#6b6b6b", width:1, dash:"dot"}, hoverinfo:"skip", showlegend:false },
+      line:{color:C.ref, width:1, dash:"dot"}, hoverinfo:"skip", showlegend:false },
     { x: samples, y: rewards, mode:"markers",
       marker: {
         size: 10, color: res,
-        colorscale: [[0,"#c0392b"],[0.5,"#d8d4c8"],[1,"#0e8388"]],
+        colorscale: [[0,C.pi],[0.5,"#d8d4c8"],[1,C.dro]],
         cmin: -dAbs, cmax: dAbs,
         line: { color:"white", width:1 },
         colorbar: { title:"δ", thickness:10, len:0.85, x:1.02, tickfont:{size:10} },
@@ -2409,7 +2518,7 @@ function renderDROPanels() {
     { x: [0, ys.length + 1], y: [0, 0], mode:"lines",
       line: { color:"#999", width:0.8 }, hoverinfo:"skip", showlegend:false },
     { x: xs, y: ys, type:"bar",
-      marker: { color: ys.map(v => v >= 0 ? "#0e8388" : "#c0392b") },
+      marker: { color: ys.map(v => v >= 0 ? C.dro : C.pi) },
       hovertemplate: "δ=%{y:.3f}<extra></extra>",
       showlegend: false },
   ], {
@@ -2464,16 +2573,16 @@ function renderDROVPanel() {
       hovertemplate: `β<sub>DRO</sub> log Z = ${Vstar.toFixed(3)} (unreachable for Gaussian π<sub>θ</sub>)<extra></extra>`,
       showlegend: false },
     { x: [0, xMax], y: [Vinf, Vinf], mode:"lines", name:"V∞(θ)",
-      line:{ color:"#0e8388", width:1.2, dash:"dot" },
+      line:{ color:C.dro, width:1.2, dash:"dot" },
       hovertemplate: `V<sub>∞</sub>(θ) = ${Vinf.toFixed(3)}<extra></extra>`,
       showlegend: false },
     { x: xs, y: ys, mode:"lines+markers", name:"V",
-      line:{ color:"#0e8388", width:2 },
-      marker:{ size:5, color:"#0e8388" },
+      line:{ color:C.dro, width:2 },
+      marker:{ size:5, color:C.dro },
       hovertemplate: "step %{x}<br>V=%{y:.3f}<extra></extra>",
       showlegend: false },
     { x: [xs[xs.length-1]], y: [ys[ys.length-1]], mode:"markers",
-      marker:{ size:11, color:"#0e8388", line:{ color:"white", width:2 } },
+      marker:{ size:11, color:C.dro, line:{ color:"white", width:2 } },
       hovertemplate: `current V = ${S.Vdro.toFixed(3)}<extra></extra>`,
       showlegend: false },
   ], {
@@ -2488,7 +2597,7 @@ function renderDROVPanel() {
       { x: xMax, y: Vinf, xref:"x", yref:"y", xanchor:"right",
         yanchor: Vinf < Vstar ? "top" : "bottom",
         text: `V<sub>∞</sub>(θ) = ${Vinf.toFixed(3)}`,
-        showarrow:false, font:{ size:10, color:"#0e8388" } },
+        showarrow:false, font:{ size:10, color:C.dro } },
     ],
     plot_bgcolor:"#fff", paper_bgcolor:"#fff",
     font: { family:"Inter Tight, sans-serif", size:11 },
@@ -2522,10 +2631,10 @@ function renderDROLoss() {
       line:{ color:"#888", width:1.5, dash:"dash" },
       hovertemplate:"step %{x}<br>bias = %{y:.4f}<extra></extra>", showlegend:false },
     { x:xs, y:lossY, mode:"lines+markers", name:"total loss",
-      line:{ color:"#0e8388", width:2.4 }, marker:{ size:5, color:"#0e8388" },
+      line:{ color:C.dro, width:2.4 }, marker:{ size:5, color:C.dro },
       hovertemplate:"step %{x}<br>L = %{y:.4f}<extra></extra>", showlegend:false },
     { x:[xs[xs.length-1]], y:[lossY[lossY.length-1]], mode:"markers",
-      marker:{ size:11, color:"#0e8388", line:{ color:"white", width:2 } },
+      marker:{ size:11, color:C.dro, line:{ color:"white", width:2 } },
       hovertemplate:`current L = ${lossY[lossY.length-1].toFixed(4)}<extra></extra>`, showlegend:false },
   ], {
     margin:{ l:52, r:14, t:6, b:36 },
@@ -2593,7 +2702,78 @@ function renderAll() {
     renderLandscape(starInfo, "plot-trajCompare", true,
                     S.compareVisible,
                     /* cornerLegend */ true);
+    renderCompareJ(starInfo);
   }
+}
+
+/* ============================================================
+   COMPARE — J(θ_t) along each trajectory. With multiple runs per
+   algorithm, draws the per-step median plus a min–max band.
+   ============================================================ */
+function renderCompareJ(starInfo) {
+  const el = document.getElementById('plot-cmpJ');
+  if (!el) return;
+  const haveData = S.cmpJ && Object.values(S.cmpJ).some(c => c && c.length > 0);
+  if (!haveData) {
+    Plotly.react("plot-cmpJ", [], {
+      margin:{ l:52, r:14, t:6, b:30 },
+      annotations:[{ text:"press Run all in the left sidebar", showarrow:false,
+        x:0.5, y:0.5, xref:"paper", yref:"paper", font:{ color:"#999" } }],
+      xaxis:{ visible:false }, yaxis:{ visible:false },
+      plot_bgcolor:"#fff", paper_bgcolor:"#fff",
+    }, { displayModeBar:false, responsive:true });
+    return;
+  }
+  const ALGO_META = [
+    ['exact', C.accent, 'exact ∇J'],
+    ['pg',    C.pg,     'PG'],
+    ['ppo',   C.ppo,    'PPO'],
+    ['grpo',  C.pi,     'GRPO'],
+    ['dpo',   C.dpo,    'DPO'],
+    ['dro',   C.dro,    'DRO'],
+  ];
+  const traces = [];
+  let xMax = 2;
+  for (const [algo, color, label] of ALGO_META) {
+    if (!S.compareVisible[algo]) continue;
+    const curves = S.cmpJ[algo];
+    if (!curves || curves.length === 0) continue;
+    const T = curves[0].length;
+    xMax = Math.max(xMax, T - 1);
+    const xs = Array.from({ length: T }, (_, t) => t);
+    if (curves.length > 1) {
+      const lo = [], hi = [], med = [];
+      for (let t = 0; t < T; t++) {
+        const vals = curves.map(c => c[t]).sort((a, b) => a - b);
+        lo.push(vals[0]);
+        hi.push(vals[vals.length - 1]);
+        const m = vals.length >> 1;
+        med.push(vals.length % 2 ? vals[m] : 0.5 * (vals[m-1] + vals[m]));
+      }
+      traces.push({ x: xs.concat(xs.slice().reverse()), y: hi.concat(lo.slice().reverse()),
+        fill: 'toself', fillcolor: hexToRgba(color, 0.13), line: { width: 0 },
+        hoverinfo: 'skip', showlegend: false });
+      traces.push({ x: xs, y: med, mode: 'lines', name: `${label} (median of ${curves.length})`,
+        line: { color, width: 2 },
+        hovertemplate: `step %{x}<br>${label} J = %{y:.3f}<extra></extra>` });
+    } else {
+      traces.push({ x: xs, y: curves[0], mode: 'lines', name: label,
+        line: { color, width: 2 },
+        hovertemplate: `step %{x}<br>${label} J = %{y:.3f}<extra></extra>` });
+    }
+  }
+  // J(π*) — the ceiling none of them can exceed
+  traces.push({ x: [0, xMax], y: [starInfo.Jstar, starInfo.Jstar], mode: 'lines',
+    name: 'J(π*)', line: { color: '#444', width: 1.2, dash: 'dash' },
+    hovertemplate: `J(π*) = ${starInfo.Jstar.toFixed(3)}<extra></extra>` });
+  Plotly.react("plot-cmpJ", traces, {
+    margin: { l: 52, r: 14, t: 6, b: 36 },
+    xaxis: { title: "step", gridcolor: "#eee", zeroline: false, range: [0, xMax] },
+    yaxis: { title: "J(θ<sub>t</sub>)", gridcolor: "#eee", zeroline: false },
+    plot_bgcolor: "#fff", paper_bgcolor: "#fff",
+    legend: { orientation: "h", x: 0, y: 1.14, font: { size: 11 } },
+    font: { family: "Inter Tight, sans-serif", size: 11 },
+  }, { displayModeBar: false, responsive: true });
 }
 
 /* ============================================================
@@ -2602,8 +2782,12 @@ function renderAll() {
 function setTab(name) {
   document.body.setAttribute('data-active-tab', name);
   document.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.getAttribute('data-target') === name);
+    const active = btn.getAttribute('data-target') === name;
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-selected', active ? 'true' : 'false');
+    btn.tabIndex = active ? 0 : -1;
   });
+  scheduleHashWrite();
   renderAll();
 }
 
@@ -2634,8 +2818,14 @@ function togglePlayPPO() {
     clearInterval(S.playPPO); S.playPPO = null; btn.textContent = "▶ Play";
   } else {
     btn.textContent = "❚❚ Pause";
-    // PPO refreshes π_old each play frame, mirroring the GRPO play loop.
-    S.playPPO = setInterval(() => { ppoResample(); ppoStep(); }, 180);
+    // Real-PPO cadence: K gradient steps per batch, then refresh π_old.
+    // Between refreshes the ratios drift from 1 and clipping engages.
+    S.ppoTick = 0;
+    S.playPPO = setInterval(() => {
+      if (S.ppoTick % Math.max(1, S.Kppo) === 0) ppoResample();
+      S.ppoTick++;
+      ppoStep();
+    }, 180);
   }
 }
 function togglePlayG() {
@@ -2644,7 +2834,13 @@ function togglePlayG() {
     clearInterval(S.playG); S.playG = null; btn.textContent = "▶ Play";
   } else {
     btn.textContent = "❚❚ Pause";
-    S.playG = setInterval(() => { grpoResample(); grpoStep(); }, 180);
+    // Same cadence as PPO: refresh the group every K gradient steps.
+    S.grpoTick = 0;
+    S.playG = setInterval(() => {
+      if (S.grpoTick % Math.max(1, S.Kgrpo) === 0) grpoResample();
+      S.grpoTick++;
+      grpoStep();
+    }, 180);
   }
 }
 function togglePlayD() {
@@ -2673,7 +2869,7 @@ function togglePlayDRO() {
    ============================================================ */
 function resetPolicy() {
   S.muTh = 0; S.sigTh = 1.0;
-  S.trajExact = []; S.trajPG = []; S.trajPPO = []; S.trajGRPO = []; S.trajDPO = []; S.trajDRO = []; S.trajVdro = []; S.dpoAccHist = []; S.droLossHist = [];
+  S.trajExact = []; S.trajPG = []; S.trajPPO = []; S.trajGRPO = []; S.trajDPO = []; S.trajDRO = []; S.trajVdro = []; S.dpoAccHist = []; S.droLossHist = []; S.cmpJ = null;
   syncSliders();
   renderAll();
 }
@@ -2700,12 +2896,14 @@ function resetAll() {
   S.muTh  = 0;   S.sigTh  = 1.0;
   S.beta  = 0.5;
   S.rewardPreset = "single";
+  S.seed = 0; setSeed(0);
   S.lrExact = 0.1;
   S.NPG = 16;    S.lrPG = 0.05;
-  S.NPPO = 16;   S.epsPPO = 0.2;  S.lrPPO = 0.05; S.lrPPOv = 0.2; S.Vppo = 0;
-  S.G = 8;       S.eps = 0.2;     S.lrG = 0.03;
+  S.NPPO = 16;   S.epsPPO = 0.2;  S.lrPPO = 0.05; S.lrPPOv = 0.2; S.Vppo = 0; S.Kppo = 4;
+  S.G = 8;       S.eps = 0.2;     S.lrG = 0.03;   S.Kgrpo = 4;
   S.betaDPO = 0.5; S.N = 32; S.lrDPO = 0.05; S.prefNoise = 0.5;
   S.betaDRO = 0.5; S.NDRO = 32; S.lrDROth = 0.05; S.lrDROv = 0.1; S.Vdro = 0;
+  S.ppoTick = 0; S.grpoTick = 0;
 
   // Drop generated data and trajectories
   S.pg   = { samples: [], rewards: [], advs: [] };
@@ -2713,7 +2911,19 @@ function resetAll() {
   S.grpo = { piOldMu: 0, piOldSig: 1.0, samples: [], rewards: [], advs: [], ratios: [], surr: [] };
   S.dpo  = { pairs: [], margins: [], selected: null };
   S.dro  = { samples: [], rewards: [], residuals: [], selected: null };
-  S.trajExact = []; S.trajPG = []; S.trajPPO = []; S.trajGRPO = []; S.trajDPO = []; S.trajDRO = []; S.trajVdro = []; S.dpoAccHist = []; S.droLossHist = [];
+  S.trajExact = []; S.trajPG = []; S.trajPPO = []; S.trajGRPO = []; S.trajDPO = []; S.trajDRO = []; S.trajVdro = []; S.dpoAccHist = []; S.droLossHist = []; S.cmpJ = null;
+
+  // Compare tab back to defaults: all algorithms visible, sliders reset
+  for (const algo of Object.keys(S.compareVisible)) S.compareVisible[algo] = true;
+  document.querySelectorAll('.cmp-toggle').forEach(btn => btn.classList.remove('cmp-off'));
+  document.getElementById('cmpSteps').value = 80;
+  document.getElementById('cmpScale').value = 1;
+  document.getElementById('cmpRuns').value  = 1;
+  updateCmpReadouts();
+
+  // Seed input back to "off"
+  document.getElementById('seedInput').value = 0;
+  document.getElementById('val-seed').textContent = 'off';
 
   // Push all S values back to the DOM controls
   const setSlider = (id, val, d) => {
@@ -2730,11 +2940,13 @@ function resetAll() {
   setSlider('lrPG',   S.lrPG,   3);
   setSlider('NPPO',   S.NPPO,   'i');
   setSlider('epsPPO', S.epsPPO, 2);
+  setSlider('Kppo',   S.Kppo,   'i');
   setSlider('lrPPO',  S.lrPPO,  3);
   setSlider('lrPPOv', S.lrPPOv, 3);
   document.getElementById('val-Vppo').textContent = S.Vppo.toFixed(3);
   setSlider('G',      S.G,      'i');
   setSlider('eps',    S.eps,    2);
+  setSlider('Kgrpo',  S.Kgrpo,  'i');
   setSlider('lrG',    S.lrG,    3);
   setSlider('betaDPO',  S.betaDPO,  2);
   setSlider('N',        S.N,        'i');
@@ -2747,6 +2959,7 @@ function resetAll() {
   document.getElementById('val-Vdro').textContent = S.Vdro.toFixed(3);
   document.getElementById('rewardPreset').value = S.rewardPreset;
 
+  writeHash();   // everything is at defaults again → clears the hash
   renderAll();
 }
 function snapToStar() {
@@ -2767,8 +2980,82 @@ function bindSlider(id, key, decimals=2, after=null) {
     S[key] = parseFloat(el.value);
     val.textContent = S[key].toFixed(decimals);
     if (after) after();
-    renderAll();
+    scheduleHashWrite();
+    requestRender();
   });
+}
+
+// Compare-tab readouts (steps, runs, scale + derived sample counts).
+// Top-level (not closed over DOMContentLoaded) so resetAll can call it.
+function updateCmpReadouts() {
+  const s = parseFloat(document.getElementById('cmpScale').value);
+  document.getElementById('val-cmpSteps').textContent = document.getElementById('cmpSteps').value;
+  document.getElementById('val-cmpRuns').textContent  = document.getElementById('cmpRuns').value;
+  document.getElementById('val-cmpScale').textContent = s.toFixed(2);
+  const NPG  = Math.max(2, Math.round(COMPARE_DEFAULTS.NPG  * s));
+  const NPPO = Math.max(2, Math.round(COMPARE_DEFAULTS.NPPO * s));
+  const G    = Math.max(2, Math.round(COMPARE_DEFAULTS.G    * s));
+  const N    = Math.max(1, Math.round(COMPARE_DEFAULTS.N    * s));
+  const NDRO = Math.max(2, Math.round(COMPARE_DEFAULTS.NDRO * s));
+  document.getElementById('val-cmpCounts').textContent =
+    `· PG ${NPG} · PPO ${NPPO} · GRPO ${G} · DPO ${N} · DRO ${NDRO}`;
+}
+
+/* ============================================================
+   SELF-TEST (append ?selftest to the URL) — finite-difference
+   checks of every analytic gradient across all reward presets,
+   plus sanity checks on π*. Results go to the console and a
+   click-to-dismiss banner.
+   ============================================================ */
+function runSelfTest() {
+  const out = [];
+  const check = (name, pass, detail) => out.push({ name, pass: pass ? "✓" : "✗ FAIL", detail });
+  const close = (a, b, tol) => Math.abs(a - b) < tol * Math.max(1, Math.abs(b));
+  const h = 1e-5, tol = 1e-4;
+  const presetSave = S.rewardPreset;
+  const pts = [[0.3, 0.9], [-1.2, 1.7], [2.0, 0.5]];
+  for (const preset of Object.keys(REWARD_PRESETS)) {
+    S.rewardPreset = preset;
+    for (const [mu, sig] of pts) {
+      const [gem, ges] = gradExpected(mu, sig);
+      const fdEm = (expectedReward(mu+h, sig) - expectedReward(mu-h, sig)) / (2*h);
+      const fdEs = (expectedReward(mu, sig+h) - expectedReward(mu, sig-h)) / (2*h);
+      check(`gradExpected ${preset} (${mu},${sig})`, close(gem, fdEm, tol) && close(ges, fdEs, tol),
+            `∂μ ${gem.toFixed(6)} vs ${fdEm.toFixed(6)} · ∂σ ${ges.toFixed(6)} vs ${fdEs.toFixed(6)}`);
+      const [gkm, gks] = gradKL(mu, sig);
+      const fdKm = (klGaussian(mu+h, sig, S.muRef, S.sigRef) - klGaussian(mu-h, sig, S.muRef, S.sigRef)) / (2*h);
+      const fdKs = (klGaussian(mu, sig+h, S.muRef, S.sigRef) - klGaussian(mu, sig-h, S.muRef, S.sigRef)) / (2*h);
+      check(`gradKL ${preset} (${mu},${sig})`, close(gkm, fdKm, tol) && close(gks, fdKs, tol),
+            `∂μ ${gkm.toFixed(6)} vs ${fdKm.toFixed(6)} · ∂σ ${gks.toFixed(6)} vs ${fdKs.toFixed(6)}`);
+      const [gjm, gjs] = gradJ(mu, sig);
+      const fdJm = (objective(mu+h, sig) - objective(mu-h, sig)) / (2*h);
+      const fdJs = (objective(mu, sig+h) - objective(mu, sig-h)) / (2*h);
+      check(`gradJ ${preset} (${mu},${sig})`, close(gjm, fdJm, tol) && close(gjs, fdJs, tol),
+            `∂μ ${gjm.toFixed(6)} vs ${fdJm.toFixed(6)} · ∂σ ${gjs.toFixed(6)} vs ${fdJs.toFixed(6)}`);
+    }
+    // π*: density normalizes, and J(π*) dominates every Gaussian on the grid
+    // (π* is optimal over all densities, so no (μ,σ) cell may beat it).
+    const star = computeStar();
+    let mass = 0;
+    for (const p of star.pdf) mass += p * DA;
+    check(`π* normalization ${preset}`, Math.abs(mass - 1) < 1e-3, `∫π* da = ${mass.toFixed(6)}`);
+    const Z = computeLandscape();
+    let zmax = -Infinity;
+    for (const row of Z) for (const v of row) zmax = Math.max(zmax, v);
+    check(`J(π*) ≥ max Gaussian J ${preset}`, star.Jstar >= zmax - 1e-3,
+          `J(π*) = ${star.Jstar.toFixed(4)}, grid max = ${zmax.toFixed(4)}`);
+  }
+  S.rewardPreset = presetSave;
+  const passed = out.filter(o => o.pass === "✓").length;
+  console.table(out);
+  const banner = document.createElement('div');
+  banner.style.cssText =
+    'position:fixed;bottom:14px;right:14px;z-index:999;padding:10px 16px;' +
+    "font:12px 'JetBrains Mono',monospace;color:white;border-radius:4px;cursor:pointer;" +
+    `background:${passed === out.length ? C.star : C.pi};`;
+  banner.textContent = `self-test: ${passed}/${out.length} passed — details in console (click to dismiss)`;
+  banner.onclick = () => banner.remove();
+  document.body.appendChild(banner);
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -2795,10 +3082,12 @@ document.addEventListener('DOMContentLoaded', () => {
   bindSlider('lrPG',   'lrPG',   3);
   bindSlider('NPPO',   'NPPO',   0, () => { S.NPPO = parseInt(S.NPPO); });
   bindSlider('epsPPO', 'epsPPO', 2);
+  bindSlider('Kppo',   'Kppo',   0, () => { S.Kppo = parseInt(S.Kppo); });
   bindSlider('lrPPO',  'lrPPO',  3);
   bindSlider('lrPPOv', 'lrPPOv', 3);
   bindSlider('G',      'G',      0, () => { S.G = parseInt(S.G); });
   bindSlider('eps',    'eps',    2);
+  bindSlider('Kgrpo',  'Kgrpo',  0, () => { S.Kgrpo = parseInt(S.Kgrpo); });
   bindSlider('lrG',    'lrG',    3);
   bindSlider('betaDPO',  'betaDPO',  2);
   bindSlider('N',        'N',        0, () => { S.N = parseInt(S.N); });
@@ -2809,26 +3098,37 @@ document.addEventListener('DOMContentLoaded', () => {
   bindSlider('lrDROth',  'lrDROth',  3);
   bindSlider('lrDROv',   'lrDROv',   3);
 
-  // Compare tab — only the steps slider has a live readout; no S binding needed.
-  const cmpStepsEl = document.getElementById('cmpSteps');
-  const cmpStepsVal = document.getElementById('val-cmpSteps');
-  cmpStepsEl.addEventListener('input', () => { cmpStepsVal.textContent = cmpStepsEl.value; });
+  // Compare tab — sliders only drive readouts; compareRunAll reads the
+  // DOM values directly when the user presses Run all.
+  for (const id of ['cmpSteps', 'cmpScale', 'cmpRuns']) {
+    document.getElementById(id).addEventListener('input', () => {
+      updateCmpReadouts();
+      scheduleHashWrite();
+    });
+  }
+  updateCmpReadouts();
 
-  const cmpScaleEl = document.getElementById('cmpScale');
-  const cmpScaleVal = document.getElementById('val-cmpScale');
-  const cmpCountsVal = document.getElementById('val-cmpCounts');
-  const updateCmpCounts = () => {
-    const s = parseFloat(cmpScaleEl.value);
-    const NPG  = Math.max(2, Math.round(COMPARE_DEFAULTS.NPG  * s));
-    const NPPO = Math.max(2, Math.round(COMPARE_DEFAULTS.NPPO * s));
-    const G    = Math.max(2, Math.round(COMPARE_DEFAULTS.G    * s));
-    const N    = Math.max(1, Math.round(COMPARE_DEFAULTS.N    * s));
-    const NDRO = Math.max(2, Math.round(COMPARE_DEFAULTS.NDRO * s));
-    cmpScaleVal.textContent = s.toFixed(2);
-    cmpCountsVal.textContent = `· PG ${NPG} · PPO ${NPPO} · GRPO ${G} · DPO ${N} · DRO ${NDRO}`;
-  };
-  cmpScaleEl.addEventListener('input', updateCmpCounts);
-  updateCmpCounts();
+  // Seed input: 0 = unseeded, anything else re-seeds the RNG stream.
+  const seedEl = document.getElementById('seedInput');
+  seedEl.addEventListener('change', () => {
+    S.seed = Math.max(0, parseInt(seedEl.value) || 0);
+    seedEl.value = S.seed;
+    document.getElementById('val-seed').textContent = S.seed > 0 ? String(S.seed) : 'off';
+    setSeed(S.seed);
+    scheduleHashWrite();
+  });
+
+  // Tab strip: roving focus + arrow-key navigation (the buttons already
+  // carry role="tab"; setTab keeps aria-selected and tabIndex in sync).
+  document.querySelector('.tabs').addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+    const btns = Array.from(document.querySelectorAll('.tab-btn'));
+    const i = btns.findIndex(b => b.classList.contains('active'));
+    const next = (i + (e.key === 'ArrowRight' ? 1 : -1) + btns.length) % btns.length;
+    setTab(btns[next].getAttribute('data-target'));
+    btns[next].focus();
+    e.preventDefault();
+  });
 
   // Compare-tab clickable legend toggles
   document.querySelectorAll('.cmp-toggle').forEach(btn => {
@@ -2848,11 +3148,16 @@ document.addEventListener('DOMContentLoaded', () => {
     S.grpo.samples = []; S.grpo.rewards = []; S.grpo.advs = []; S.grpo.ratios = []; S.grpo.surr = [];
     S.dpo.pairs = []; S.dpo.margins = []; S.dpo.selected = null;
     S.dro.samples = []; S.dro.rewards = []; S.dro.residuals = []; S.dro.selected = null;
-    S.trajExact = []; S.trajPG = []; S.trajPPO = []; S.trajGRPO = []; S.trajDPO = []; S.trajDRO = []; S.trajVdro = []; S.dpoAccHist = []; S.droLossHist = [];
+    S.trajExact = []; S.trajPG = []; S.trajPPO = []; S.trajGRPO = []; S.trajDPO = []; S.trajDRO = []; S.trajVdro = []; S.dpoAccHist = []; S.droLossHist = []; S.cmpJ = null;
+    scheduleHashWrite();
     renderAll();
   });
 
+  // Restore any shared configuration from the URL hash, then render.
+  readHash();
   renderAll();
+
+  if (new URLSearchParams(location.search).has('selftest')) runSelfTest();
 });
 </script>
 </body>
