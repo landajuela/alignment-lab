@@ -598,6 +598,9 @@
 
 <div class="controls tab-grpo">
   <h3>GRPO</h3>
+  <div class="ctrl-eq">
+    $\mathcal{L}_{\mathrm{GRPO}} = \tfrac{1}{G}\sum_i \min(\rho_i\hat A_i, \mathrm{clip}(\rho_i)\hat A_i) - \beta\,\mathrm{KL}, \quad \hat A_i = \tfrac{r_i - \bar r}{\mathrm{std}(r)}$
+  </div>
   <div class="control">
     <label>Group size $G$ <span class="val" id="val-G">8</span></label>
     <input type="range" id="G" min="2" max="64" step="1" value="8" />
@@ -701,7 +704,7 @@
   </div>
   <div class="control">
     <label>Baseline $V$ <span class="val" id="val-Vdro">0.000</span></label>
-    <span class="hint"><em>Learned</em>, not set by hand: each Step also updates $V \leftarrow V + \eta_V\,\overline{\delta}$ — gradient descent on the same MSE loss. Converges to $\beta_{\mathrm{DRO}}\log Z$, the log-partition of $\pi^\star$.</span>
+    <span class="hint"><em>Learned</em>, not set by hand: each Step also updates $V \leftarrow V + \eta_V\,\overline{\delta}$ — gradient descent on the same MSE loss. It chases $V_\infty(\theta) = \mathbb{E}_{\pi_{\mathrm{ref}}}[r] + \beta_{\mathrm{DRO}}\,\mathrm{KL}(\pi_{\mathrm{ref}}\Vert\pi_\theta)$, which equals $\beta_{\mathrm{DRO}}\log Z$ (the log-partition of $\pi^\star$) only at $\pi_\theta = \pi^\star$ — see the baseline panel below.</span>
   </div>
   <div class="btn-row three">
     <button class="btn" onclick="droResample()">Resample</button>
@@ -1845,6 +1848,9 @@ function syncSliders() {
   document.getElementById('sig').value = S.sigTh;
   document.getElementById('val-mu').textContent  = S.muTh.toFixed(2);
   document.getElementById('val-sig').textContent = S.sigTh.toFixed(2);
+  // Stepping/Play moves μ,σ without touching the sliders, so keep the
+  // shareable URL in sync from here too (debounced; a no-op at defaults).
+  scheduleHashWrite();
 }
 
 // Coalesce bursts of slider input into one render per animation frame.
@@ -1878,7 +1884,12 @@ function writeHash() {
   const parts = [];
   for (const id of HASH_SLIDER_IDS) {
     const el = document.getElementById(id);
-    if (el && el.value !== el.defaultValue) parts.push(`${id}=${el.value}`);
+    // Compare numerically ("1" vs "1.0" is not a change) and round what we
+    // write: syncSliders assigns raw floats to μ,σ and 17-digit values would
+    // otherwise leak into the URL.
+    if (el && parseFloat(el.value) !== parseFloat(el.defaultValue)) {
+      parts.push(`${id}=${+parseFloat(el.value).toFixed(4)}`);
+    }
   }
   if (S.rewardPreset !== 'single') parts.push(`rewardPreset=${S.rewardPreset}`);
   if (S.seed > 0) parts.push(`seed=${S.seed}`);
@@ -2869,6 +2880,11 @@ function togglePlayDRO() {
    ============================================================ */
 function resetPolicy() {
   S.muTh = 0; S.sigTh = 1.0;
+  // The learned baselines are training state too — clearing their history
+  // charts (trajVdro, droLossHist) while keeping a stale V would mislead.
+  S.Vppo = 0; S.Vdro = 0;
+  document.getElementById('val-Vppo').textContent = S.Vppo.toFixed(3);
+  document.getElementById('val-Vdro').textContent = S.Vdro.toFixed(3);
   S.trajExact = []; S.trajPG = []; S.trajPPO = []; S.trajGRPO = []; S.trajDPO = []; S.trajDRO = []; S.trajVdro = []; S.dpoAccHist = []; S.droLossHist = []; S.cmpJ = null;
   syncSliders();
   renderAll();
@@ -3045,6 +3061,92 @@ function runSelfTest() {
     check(`J(π*) ≥ max Gaussian J ${preset}`, star.Jstar >= zmax - 1e-3,
           `J(π*) = ${star.Jstar.toFixed(4)}, grid max = ${zmax.toFixed(4)}`);
   }
+
+  /* Algorithm cores: freeze a batch, finite-difference each core's own
+     surrogate objective, and check that the update the core takes is
+     exactly that gradient (× lr). Guards the invariant that the cores
+     and the analytic objective agree. Seeded, so deterministic; the
+     user's RNG stream is restored at the end of the block. */
+  {
+    S.rewardPreset = 'double';
+    setSeed(1234);
+    const lr = 1e-3;
+    const thMu = 0.45, thSig = 0.85;      // interior point: clamps stay inactive
+    const oldMu = 0.30, oldSig = 1.00;    // π_old ≠ π_θ so ratios ≠ 1 and clipping engages
+    const ceps = 0.2;
+    const batch = sampleBatch(oldMu, oldSig, 64);
+    const surrAt = (mu, sig, advs) => {
+      let s = 0;
+      for (let i = 0; i < batch.samples.length; i++) {
+        const rho = Math.exp(logGauss(batch.samples[i], mu, sig) - logGauss(batch.samples[i], oldMu, oldSig));
+        s += Math.min(rho * advs[i], clamp(rho, 1-ceps, 1+ceps) * advs[i]);
+      }
+      return s / batch.samples.length;
+    };
+    const fdCheck = (name, f, gMu, gSig) => {
+      const fdMu  = (f(thMu+h, thSig) - f(thMu-h, thSig)) / (2*h);
+      const fdSig = (f(thMu, thSig+h) - f(thMu, thSig-h)) / (2*h);
+      check(name, close(gMu, fdMu, tol) && close(gSig, fdSig, tol),
+            `∂μ ${gMu.toFixed(6)} vs ${fdMu.toFixed(6)} · ∂σ ${gSig.toFixed(6)} vs ${fdSig.toFixed(6)}`);
+    };
+
+    { // PPO ascends surr(θ) − β·KL with Â = r − V
+      const V = 0.3;
+      const advs = batch.rewards.map(r => r - V);
+      const out = ppoStepCore(thMu, thSig, V, batch, oldMu, oldSig, { eps: ceps, lr, lrV: 0 });
+      fdCheck('ppoStepCore ≡ ∇(surrogate − βKL)',
+        (mu, sig) => surrAt(mu, sig, advs) - S.beta * klGaussian(mu, sig, S.muRef, S.sigRef),
+        (out.mu - thMu) / lr, (out.sig - thSig) / lr);
+    }
+    { // GRPO: same surrogate with group-normalized advantages
+      const advs = groupAdvantages(batch.rewards);
+      const out = grpoStepCore(thMu, thSig, batch, oldMu, oldSig, { eps: ceps, lr });
+      fdCheck('grpoStepCore ≡ ∇(surrogate − βKL)',
+        (mu, sig) => surrAt(mu, sig, advs) - S.beta * klGaussian(mu, sig, S.muRef, S.sigRef),
+        (out.mu - thMu) / lr, (out.sig - thSig) / lr);
+    }
+    { // DPO descends the mean logistic loss −log σ(h) over a frozen pair set
+      const bD = 0.7;
+      const pairs = dpoMakePairs(48, 0.5);
+      const out = dpoStepCore(thMu, thSig, pairs, { betaDPO: bD, lr });
+      fdCheck('dpoStepCore ≡ −∇ E[−log σ(h)]',
+        (mu, sig) => {
+          let s = 0;
+          for (const pr of pairs) s += negLogSigmoid(dpoMarginAt(pr.aw, pr.al, mu, sig, bD));
+          return -s / pairs.length;
+        },
+        (out.mu - thMu) / lr, (out.sig - thSig) / lr);
+    }
+    { // DRO descends ½·mean δ² jointly in (θ, V): check all three partials
+      const bD = 0.6, V0 = 0.2;
+      const data = sampleBatch(S.muRef, S.sigRef, 48);
+      const L = (mu, sig, V) => {
+        let s = 0;
+        for (let i = 0; i < data.samples.length; i++) {
+          const d = droResidualAt(data.samples[i], data.rewards[i], mu, sig, V, bD);
+          s += 0.5 * d * d;
+        }
+        return s / data.samples.length;
+      };
+      const out = droStepCore(thMu, thSig, V0, data, { betaDRO: bD, lrTh: lr, lrV: lr });
+      fdCheck('droStepCore ≡ −∇θ L', (mu, sig) => -L(mu, sig, V0),
+              (out.mu - thMu) / lr, (out.sig - thSig) / lr);
+      const gV  = (out.V - V0) / lr;
+      const fdV = -(L(thMu, thSig, V0 + h) - L(thMu, thSig, V0 - h)) / (2*h);
+      check('droStepCore ≡ −∇V L', close(gV, fdV, tol),
+            `∂V ${gV.toFixed(6)} vs ${fdV.toFixed(6)}`);
+    }
+    { // PG is stochastic: with a large batch its estimate must land on ∇J
+      setSeed(77);
+      const [gm, gs] = gradJ(thMu, thSig);
+      const out = pgStepCore(thMu, thSig, 60000, lr);
+      const em = (out.mu - thMu) / lr, es = (out.sig - thSig) / lr;
+      check('pgStepCore →(N=60k) ∇J', Math.abs(em - gm) < 0.02 && Math.abs(es - gs) < 0.02,
+            `∂μ ${em.toFixed(4)} vs ${gm.toFixed(4)} · ∂σ ${es.toFixed(4)} vs ${gs.toFixed(4)}`);
+    }
+    setSeed(S.seed);   // restore the user's RNG stream
+  }
+
   S.rewardPreset = presetSave;
   const passed = out.filter(o => o.pass === "✓").length;
   console.table(out);

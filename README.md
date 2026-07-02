@@ -18,7 +18,7 @@ Dependencies (Plotly, KaTeX, Google Fonts) load from CDNs (with subresource-inte
 - **Seeded runs** — set a nonzero seed in the sidebar to make all sampling reproducible; *Run all* on the Compare tab then replays bit-identically.
 - **Shareable URLs** — every control that differs from its default is serialized into `location.hash`, so a specific configuration (reward preset, β, starting point, active tab, …) can be sent as a link.
 - **Inner epochs (K)** — PPO and GRPO take K gradient steps per batch before refreshing $\pi_{\mathrm{old}}$, so the clipped surrogate actually engages (ratios drift from 1 between refreshes).
-- **Self-test** — open `index.html?selftest` to run finite-difference checks of every analytic gradient across all reward presets, plus sanity checks on $\pi^\star$; results land in the console and a banner.
+- **Self-test** — open `index.html?selftest` to run finite-difference checks of every analytic gradient across all reward presets, sanity checks on $\pi^\star$, and per-algorithm core checks (each sampled update rule — PPO, GRPO, DPO, DRO — must equal the gradient of its own surrogate on a frozen batch, and PG's large-batch estimate must land on $\nabla J$); results land in the console and a banner.
 
 ## Files
 

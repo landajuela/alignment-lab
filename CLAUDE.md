@@ -23,7 +23,7 @@ There is no build step, no package manager, and no test suite beyond the in-page
 
 - **Recommended**: open in VS Code and use Live Server (configured for port 5501 in `.vscode/settings.json`).
 - **Alternative**: `python3 -m http.server 5501` then visit `http://localhost:5501/index.html`, or `open index.html` for a quick look (some browsers restrict CDN/font behavior under `file://`).
-- **Self-test**: visit `index.html?selftest` — `runSelfTest()` finite-differences every analytic gradient across all reward presets and sanity-checks $\pi^\star$ (normalization; $J(\pi^\star)$ must dominate the Gaussian landscape grid). Run this after any change to the math.
+- **Self-test**: visit `index.html?selftest` — `runSelfTest()` finite-differences every analytic gradient across all reward presets, sanity-checks $\pi^\star$ (normalization; $J(\pi^\star)$ must dominate the Gaussian landscape grid), and checks each algorithm core against its own surrogate on a frozen, seeded batch (PPO/GRPO vs. the clipped surrogate $-\beta$KL, DPO vs. the logistic loss, DRO vs. the MSE in $(\theta, V)$, PG statistically vs. $\nabla J$ at $N = 60{,}000$). Run this after any change to the math. It can also be run headlessly: extract the inline `<script>`, stub the DOM (see the memory note on JXA), and call `runSelfTest()` via `osascript -l JavaScript`.
 
 ## Code architecture
 
