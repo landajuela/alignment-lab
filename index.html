@@ -122,6 +122,24 @@
   .btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
   .btn-row.three { grid-template-columns: 1fr 1fr 1fr; }
 
+  .plot-toolbar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;
+    margin: -2px 0 10px; padding: 8px 10px;
+    border: 1px solid var(--rule); background: rgba(26,26,26,0.025);
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted);
+  }
+  .plot-toolbar label { display: flex; align-items: center; gap: 8px; }
+  .plot-toolbar select {
+    padding: 4px 7px; border: 1px solid var(--rule);
+    background: var(--paper); color: var(--ink);
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+  }
+  .diagnostic-strip {
+    margin: 8px 0 0; color: var(--muted);
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; line-height: 1.55;
+  }
+
   select.preset {
     width: 100%; padding: 6px 8px;
     font-family: 'JetBrains Mono', monospace; font-size: 12px;
@@ -406,8 +424,8 @@
 
 <header class="masthead">
   <div class="eyebrow">Interactive · Alignment for RL on Language Models</div>
-  <h1>The Geometry of Alignment — <em>RLHF, PPO, GRPO, DPO, and DRO, in one dimension.</em></h1>
-  <p class="lede">A one-dimensional toy of RLHF. The "language model" is a Gaussian policy $\pi_\theta$, the human-preferred behavior is a reward landscape $r(a)$, and a reference model $\pi_{\mathrm{ref}}$ anchors the optimization through a KL penalty. Drag the policy around. Watch the KL-regularized optimum $\pi^\star$ emerge as you change&nbsp;$\beta$. Then compare six routes to that same optimum: the exact RLHF gradient, vanilla policy gradient (PG), PPO (clipped, value-baseline), GRPO (clipped, group-normalized), DPO (logistic loss on preference pairs), and DRO (a regression on a learned baseline).</p>
+  <h1>The Geometry of Alignment — <em>RLHF, PG, PPO, GRPO, DPO, and DRO, in one dimension.</em></h1>
+  <p class="lede">A one-dimensional toy of RLHF. The "language model" is a Gaussian policy $\pi_\theta$, the human-preferred behavior is a reward landscape $r(a)$, and a reference model $\pi_{\mathrm{ref}}$ anchors the optimization through a KL penalty. Drag the policy around. Watch the unrestricted KL-regularized optimum $\pi^\star$ emerge as you change&nbsp;$\beta$. Then compare six optimization routes. When the learned policy is restricted to one Gaussian, their best Gaussian approximations can differ — the DRO diagnostics make that approximation gap visible.</p>
 </header>
 
 <details class="model-spec" id="modelSpec">
@@ -515,7 +533,7 @@
     </div>
     <div class="btn-row">
       <button class="btn" onclick="resetPolicy()">↺ Reset $\pi_\theta$</button>
-      <button class="btn" onclick="snapToStar()">→ Set to $\pi^\star$</button>
+      <button class="btn" onclick="snapToStar()">→ Match $\pi^\star$ moments</button>
     </div>
   </div>
 </div>
@@ -689,6 +707,16 @@
   <div class="control">
     <label>$\beta_{\mathrm{DRO}}$ <span class="val" id="val-betaDRO">0.50</span></label>
     <input type="range" id="betaDRO" min="0.05" max="3" step="0.05" value="0.5" />
+    <span class="hint">Set this equal to the experiment $\beta$ when comparing targets. The Compare tab does this automatically.</span>
+  </div>
+  <div class="control">
+    <label for="droMode">Optimizer</label>
+    <select id="droMode" class="preset">
+      <option value="practical" selected>Practical DRO-V</option>
+      <option value="raw">Raw MSE gradient</option>
+      <option value="profile">Profile V exactly</option>
+    </select>
+    <span class="hint"><strong>Practical</strong> applies the paper's $1/\beta_{\mathrm{DRO}}$ policy rescaling and updates $\log\sigma$. <strong>Raw</strong> reproduces direct MSE descent. <strong>Profile</strong> solves the scalar $V$ target on the fixed batch each step.</span>
   </div>
   <div class="control">
     <label>Batch $N$ <span class="val" id="val-NDRO">32</span></label>
@@ -698,17 +726,18 @@
     <label>$\eta_\theta$ (policy) <span class="val" id="val-lrDROth">0.05</span></label>
     <input type="range" id="lrDROth" min="0.005" max="0.5" step="0.005" value="0.05" />
   </div>
-  <div class="control">
-    <label>$\eta_V$ (baseline) <span class="val" id="val-lrDROv">0.10</span></label>
+  <div class="control" id="droValueLrControl">
+    <label>$\eta_V$ (value) <span class="val" id="val-lrDROv">0.10</span></label>
     <input type="range" id="lrDROv" min="0.005" max="1" step="0.005" value="0.1" />
   </div>
   <div class="control">
-    <label>Baseline $V$ <span class="val" id="val-Vdro">0.000</span></label>
-    <span class="hint"><em>Learned</em>, not set by hand: each Step also updates $V \leftarrow V + \eta_V\,\overline{\delta}$ — gradient descent on the same MSE loss. It chases $V_\infty(\theta) = \mathbb{E}_{\pi_{\mathrm{ref}}}[r] + \beta_{\mathrm{DRO}}\,\mathrm{KL}(\pi_{\mathrm{ref}}\Vert\pi_\theta)$, which equals $\beta_{\mathrm{DRO}}\log Z$ (the log-partition of $\pi^\star$) only at $\pi_\theta = \pi^\star$ — see the baseline panel below.</span>
+    <label>Value $V$ <span class="val" id="val-Vdro">0.000</span></label>
+    <span class="hint">A learned value parameter, not merely a variance-reduction baseline. Its conditional optimum moves with $\pi_\theta$ and differs between the finite offline batch and the population.</span>
   </div>
-  <div class="btn-row three">
+  <div class="btn-row">
     <button class="btn" onclick="droResample()">Resample</button>
     <button class="btn" onclick="droStep()">Step</button>
+    <button class="btn" onclick="droSolveBatch()">Solve batch</button>
     <button class="btn primary" id="btnPlayDRO" onclick="togglePlayDRO()">▶ Play</button>
   </div>
 </div>
@@ -746,12 +775,14 @@
         <tr><td class="metric">$\mathrm{KL}\!\left(\pi_\theta \,\Vert\, \pi_{\mathrm{ref}}\right)$<div class="def">distance from the base model</div></td><td class="val" id="m-KL">—</td></tr>
         <tr><td class="metric">$J(\pi_\theta)$<div class="def">$\mathbb{E}[r] - \beta\,\mathrm{KL}$ — what RLHF maximizes</div></td><td class="val" id="m-J">—</td></tr>
         <tr><td class="metric">$\left\Vert \nabla_{\!\theta}\, J \right\Vert$<div class="def">gradient magnitude</div></td><td class="val" id="m-grad">—</td></tr>
-        <tr><td class="metric">$J(\pi^\star)$<div class="def">objective at the closed-form optimum</div></td><td class="val" id="m-Jstar">—</td></tr>
-        <tr><td class="metric">$\mu^\star,\ \sigma^\star$<div class="def">moments of $\pi^\star$ (numerical)</div></td><td class="val" id="m-star">—</td></tr>
+        <tr><td class="metric">$J(\pi^\star)$<div class="def">unrestricted objective ceiling</div></td><td class="val" id="m-Jstar">—</td></tr>
+        <tr><td class="metric">$J(\pi_G^\star)$<div class="def">best objective achievable by one Gaussian</div></td><td class="val" id="m-Jgauss">—</td></tr>
+        <tr><td class="metric">$\mu^\star,\ \sigma^\star$<div class="def">moments of unrestricted $\pi^\star$</div></td><td class="val" id="m-star">—</td></tr>
+        <tr><td class="metric">$\mu_G^\star,\ \sigma_G^\star$<div class="def">best Gaussian for the displayed $J$ surface</div></td><td class="val" id="m-gauss">—</td></tr>
       </tbody>
     </table>
     <div class="prose" style="margin-top: 14px; font-size: 14px;">
-      <p>The red dot is the current <span class="t-pi">$\pi_\theta$</span>. The green star is the moment-matched <span class="t-star">$\pi^\star$</span>. Press <strong>Play</strong> under <em>Exact RLHF gradient</em> to roll the policy uphill on this landscape — that's what an idealized, full-batch RLHF run looks like.</p>
+      <p>The red dot is the current <span class="t-pi">$\pi_\theta$</span>. The open green star records the moments of the unrestricted, generally non-Gaussian <span class="t-star">$\pi^\star$</span>; the blue diamond is the Gaussian that actually maximizes this displayed surface. Press <strong>Play</strong> under <em>Exact RLHF gradient</em> to roll the Gaussian policy toward that constrained optimum.</p>
     </div>
   </div>
 </div>
@@ -762,7 +793,7 @@
      model; the tabs swap in method-specific content + sidebar controls.
      ============================================================ -->
 <div class="prose" style="margin: 24px 0 -4px; font-size: 14px; max-width: none;">
-  <p><strong>Six algorithms, one landscape.</strong> Click any tab below to swap the bottom half of the page — including the sidebar's <em>method hyperparameters</em> — to that algorithm. Each tab tells the same story (the policy climbs toward <span class="t-star">$\pi^\star$</span>) but with a different gradient estimator: an idealized analytic gradient, a vanilla sampled gradient, a clipped surrogate with a learned baseline, a clipped group-relative variant, a preference-only logistic loss, or a regression on a learned baseline. The last tab, <em>Compare</em>, runs all six from the same starting point and overlays their trajectories on a single map.</p>
+  <p><strong>Six algorithms, one landscape.</strong> Click any tab below to swap the bottom half of the page — including the sidebar's <em>method hyperparameters</em> — to that algorithm. PG, PPO, and GRPO estimate the Gaussian RLHF direction; DPO and DRO fit related offline objectives that recover the same unrestricted $\pi^\star$ only under matched temperatures and their ideal data assumptions. Restricting every learned policy to one Gaussian exposes how those objectives can project that ideal target differently. The last tab, <em>Compare</em>, runs all six from the same starting point and overlays their trajectories on a single map.</p>
 </div>
 <div class="tabs" role="tablist">
   <button class="tab-btn active" role="tab" aria-selected="true"  tabindex="0"  data-target="rlhf" onclick="setTab('rlhf')">RLHF · exact</button>
@@ -914,7 +945,7 @@
 <div class="tab-dpo">
   <h2 class="section" style="margin-top:0;"><span class="num">03</span>DPO — learning from preferences, without a reward model</h2>
   <div class="prose" style="margin-bottom: 14px;">
-    <p>DPO (Rafailov et al., 2023) sidesteps the reward model entirely. Given a dataset of preference pairs $(a_w \succ a_l)$ — typically labeled by humans — it trains $\pi_\theta$ directly via a logistic loss whose <em>implicit</em> reward is $\beta_{\mathrm{DPO}}\,\log\pi_\theta(a)/\pi_{\mathrm{ref}}(a)$. In expectation, the minimizer is the same KL-regularized optimum <span class="t-star">$\pi^\star$</span> as RLHF.</p>
+    <p>DPO (Rafailov et al., 2023) sidesteps the reward model entirely. Given a dataset of preference pairs $(a_w \succ a_l)$ — typically labeled by humans — it trains $\pi_\theta$ directly via a logistic loss whose <em>implicit</em> reward is $\beta_{\mathrm{DPO}}\,\log\pi_\theta(a)/\pi_{\mathrm{ref}}(a)$. With a sufficiently expressive policy and matched data model, its population target is the same unrestricted <span class="t-star">$\pi^\star$</span> as RLHF; the best member of a restricted Gaussian family need not coincide.</p>
     <p style="text-align:center;">$$\mathcal{L}_{\mathrm{DPO}}(\theta) \;=\; -\,\mathbb{E}_{(a_w,\,a_l)\sim\mathcal{D}}\!\left[\log\sigma\!\left(\underbrace{\beta_{\mathrm{DPO}}\,\log\dfrac{\pi_\theta(a_w)}{\pi_{\mathrm{ref}}(a_w)} \;-\; \beta_{\mathrm{DPO}}\,\log\dfrac{\pi_\theta(a_l)}{\pi_{\mathrm{ref}}(a_l)}}_{h\;=\;\text{implicit margin}}\right)\right]$$</p>
     <p>Here we synthesize preferences: draw pairs from <span class="t-ref">$\pi_{\mathrm{ref}}$</span> and label them with a noisy Bradley-Terry oracle on $r(a)$, so we know the ground truth and can compare DPO's trajectory to RLHF's.</p>
   </div>
@@ -923,7 +954,7 @@
     <div class="panel-title">DPO trajectory on the RLHF landscape <span class="light">· <span class="t-dpo">purple = DPO</span> · <span class="t-pi">red dotted = GRPO</span> · <span class="t-exact">blue = exact $\nabla_{\!\theta} J$</span></span></div>
     <div id="plot-trajectoriesDPO" class="plot" style="height: 440px;"></div>
     <div class="prose" style="margin-top: 14px; font-size: 14px;">
-      <p>Background is still $J(\theta) = \mathbb{E}[r] - \beta\,\mathrm{KL}$ — what RLHF maximizes. DPO doesn't see $J$; it minimizes the logistic loss above. But because the implicit reward $\beta\log\pi_\theta/\pi_{\mathrm{ref}}$ is, up to a constant, the unique reward consistent with $\pi^\star$, the purple path still climbs toward the green star — through a different route, often staying closer to <span class="t-ref">$\pi_{\mathrm{ref}}$</span>.</p>
+      <p>Background is still $J(\theta) = \mathbb{E}[r] - \beta\,\mathrm{KL}$ — what RLHF maximizes. DPO doesn't see $J$; it minimizes the logistic loss above. Its purple path can still improve $J$, but finite preference data, label noise, temperature mismatch, and the Gaussian restriction can give it a different endpoint from the blue Gaussian-$J$ optimum.</p>
     </div>
   </div>
 
@@ -952,51 +983,66 @@
 
 <!-- ─── DRO tab ─── -->
 <div class="tab-dro">
-  <h2 class="section" style="margin-top:0;"><span class="num">03</span>DRO — fitting an MSE loss to the optimal policy</h2>
+  <h2 class="section" style="margin-top:0;"><span class="num">03</span>DRO — fitting reward with a policy log-ratio</h2>
   <div class="prose" style="margin-bottom: 14px;">
-    <p>Direct Reward Optimisation (Richemond et al., 2024) sidesteps preference pairs and pairwise loss entirely. Given offline scalar-reward data $(a_i, r_i)$ — here, $a_i \sim \pi_{\mathrm{ref}}$ and $r_i = r(a_i)$ — DRO jointly fits the policy $\pi_\theta$ <em>and</em> a scalar baseline $V$ by minimizing</p>
+    <p>Direct Reward Optimisation (Richemond et al., 2024) sidesteps preference pairs and pairwise loss entirely. Given offline scalar-reward data $(a_i, r_i)$ — here, $a_i \sim \pi_{\mathrm{ref}}$ and $r_i = r(a_i)$ — DRO jointly fits the policy $\pi_\theta$ <em>and</em> a scalar value $V$ by minimizing</p>
     <p style="text-align:center;">$$\mathcal{L}_{\mathrm{DRO}}(\theta, V) \;=\; \tfrac{1}{2}\,\mathbb{E}_{a\sim\pi_{\mathrm{ref}}}\!\left[\,\Big(\underbrace{r(a) \,-\, V \,-\, \beta_{\mathrm{DRO}}\log\dfrac{\pi_\theta(a)}{\pi_{\mathrm{ref}}(a)}}_{\delta(a)\;=\;\text{residual}}\Big)^{2}\,\right].$$</p>
-    <p>$V$ is <em>another learned parameter</em>, not a hand-tuned constant: each Step descends both partial derivatives of the same MSE loss,</p>
+    <p>$V$ is <em>another learned parameter</em>, not a hand-tuned constant. Raw MSE descent uses</p>
     <p style="text-align:center;">$$\theta \;\leftarrow\; \theta \,+\, \eta_\theta\;\beta_{\mathrm{DRO}}\,\mathbb{E}\!\left[\delta(a)\,\nabla_{\!\theta}\log\pi_\theta(a)\right], \qquad V \;\leftarrow\; V \,+\, \eta_V\,\mathbb{E}\!\left[\delta(a)\right].$$</p>
-    <p>So $V$ slides up or down with the running mean residual until that residual averages to zero. At the minimizer the residual vanishes <em>pointwise</em>, which forces $\pi_\theta = \pi^\star$ and $V = \beta_{\mathrm{DRO}}\log Z$ — the log-partition of $\pi^\star$. Watch its current value in the sidebar. DRO is yet another route to the same green star: a regression loss instead of a logistic one. No pairs, no clipping, no importance ratios.</p>
+    <p>The practical DRO-V option divides the policy update by $\beta_{\mathrm{DRO}}$ for conditioning and performs the scale update in $\log\sigma$; the value update is unchanged. At the DRO temperature, the unrestricted target is $\pi^\star_{\mathrm{DRO}}(a)=\pi_{\mathrm{ref}}(a)e^{r(a)/\beta_{\mathrm{DRO}}}/Z_{\mathrm{DRO}}$. If the policy class could represent it, choosing $V=\beta_{\mathrm{DRO}}\log Z_{\mathrm{DRO}}$ would make the fitted reward equal the target reward at <em>every action</em>: $\widehat r_{\theta,V}(a)=r(a)$, hence $\delta(a)=0$ everywhere — not merely zero on average. Here the ratio of two Gaussian densities has only a quadratic log, so it generally cannot reproduce the bumpy reward and the loss stops at a positive approximation-error floor.</p>
   </div>
 
   <div class="panel">
-    <div class="panel-title">DRO trajectory on the RLHF landscape <span class="light">· <span class="t-dro">teal = DRO</span> · <span class="t-dpo">purple = DPO</span> · <span class="t-exact">blue = exact $\nabla_{\!\theta} J$</span></span></div>
+    <div class="panel-title">DRO objective geometry <span class="light">· one trajectory, three views of what it is optimizing</span></div>
+    <div class="plot-toolbar">
+      <label>Surface
+        <select id="droSurface">
+          <option value="j">RLHF objective J</option>
+          <option value="population" selected>Population DRO loss (infinite data)</option>
+          <option value="batch">Current-batch DRO loss (finite data)</option>
+        </select>
+      </label>
+      <span id="droSurfaceHint">Lower is better · infinite-data expectation · value profiled out</span>
+    </div>
+    <div class="panel-eq">$\overline{\mathcal L}_{\mathrm{pop}}(\mu,\sigma)=\displaystyle\min_V\;\tfrac12\,\mathbb E_{a\sim\pi_{\mathrm{ref}}}\!\left[\delta(a)^2\right]$</div>
+    <div class="prose" style="margin: -4px 0 12px; font-size: 13px;">
+      <p><strong>Population</strong> means the ideal infinite-data loss: average the squared residual over all actions, weighted by $\pi_{\mathrm{ref}}$, rather than estimating it from the current sampled batch. In this toy it is computed analytically, so it has no sampling noise. <strong>Profiled out</strong> means that every $(\mu,\sigma)$ pixel uses whichever scalar $V$ minimizes that pixel's loss. The batch surface performs the same minimization using only the fixed offline samples. Because DRO loss explodes near $\sigma=0$, the two loss views use a disclosed nonlinear color scale that expands the useful basin and saturates the darkest 10% of cells; colorbar labels and hover values remain the exact loss.</p>
+    </div>
     <div id="plot-trajectoriesDRO" class="plot" style="height: 440px;"></div>
+    <div id="droGradientReadout" class="diagnostic-strip"></div>
     <div class="prose" style="margin-top: 14px; font-size: 14px;">
-      <p>Background is the RLHF objective $J(\theta) = \mathbb{E}[r] - \beta\,\mathrm{KL}$. DRO doesn't see $J$; it descends the squared residual above. Because the unique zero of that residual is the same exponential reweighting that defines $\pi^\star$, the teal path still climbs toward the green star — and it converges fastest when $\beta_{\mathrm{DRO}}$ matches the RLHF $\beta$.</p>
+      <p>Switch surfaces without changing the trajectory. The three target markers separate the best Gaussian for $J$, the best Gaussian for population DRO, and the optimum fitted to this finite offline batch. Their separation is policy-class error plus sampling error — not an optimizer bug.</p>
     </div>
   </div>
 
   <div class="row two">
     <div class="panel">
-      <div class="panel-title">Samples $(a_i, r_i)$ <span class="light">· marker color = signed residual $\delta_i$</span></div>
-      <div class="panel-eq">$a_i \,\sim\, \pi_{\mathrm{ref}}$,&nbsp; $r_i = r(a_i)$</div>
+      <div class="panel-title">DRO target versus fitted reward <span class="light">· shaded gap = residual</span></div>
+      <div class="panel-eq">$r(a)$ &nbsp;vs.&nbsp; $\widehat r_{\theta,V}(a)=V+\beta_{\mathrm{DRO}}\log\dfrac{\pi_\theta(a)}{\pi_{\mathrm{ref}}(a)}$</div>
       <div id="plot-droSamples" class="plot" style="height: 300px;"></div>
     </div>
     <div class="panel">
-      <div class="panel-title">Per-sample residual <span class="light">· bars near zero ⇒ regression target is met</span></div>
+      <div class="panel-title">Residual by action <span class="light">· locality exposes systematic misspecification and coverage gaps</span></div>
       <div class="panel-eq">$\delta_i \;=\; r_i \,-\, V \,-\, \beta_{\mathrm{DRO}}\log\dfrac{\pi_\theta(a_i)}{\pi_{\mathrm{ref}}(a_i)}$</div>
       <div id="plot-droResiduals" class="plot" style="height: 300px;"></div>
     </div>
   </div>
 
   <div class="panel">
-    <div class="panel-title">Baseline $V$ over steps <span class="light">· <span style="color:#444">dashed</span> = analytic target $\beta_{\mathrm{DRO}}\log Z$ · <span style="color:#0e8388">dotted</span> = $V_\infty(\theta)$ achievable with the current Gaussian</span></div>
-    <div class="panel-eq">$V_\infty(\theta) \;=\; \mathbb{E}_{\pi_{\mathrm{ref}}}\!\left[r\right] \,+\, \beta_{\mathrm{DRO}}\,\mathrm{KL}\!\left(\pi_{\mathrm{ref}}\,\|\,\pi_\theta\right) \;\;\leq\;\; \beta_{\mathrm{DRO}}\log Z$</div>
+    <div class="panel-title">Value $V$ and its moving targets <span class="light">· learned value, current-batch target, and population target</span></div>
+    <div class="panel-eq">$V_N^\star(\theta)=\overline{r-\beta_{\mathrm{DRO}}\log(\pi_\theta/\pi_{\mathrm{ref}})}$,&nbsp; $V_{\mathrm{pop}}^\star(\theta)=\mathbb{E}_{\pi_{\mathrm{ref}}}[r]+\beta_{\mathrm{DRO}}\mathrm{KL}(\pi_{\mathrm{ref}}\|\pi_\theta)$</div>
     <div id="plot-droV" class="plot" style="height: 260px;"></div>
     <div class="prose" style="margin-top: 10px; font-size: 13px;">
-      <p>The dashed line is what $V$ would converge to <em>if</em> $\pi_\theta$ could be set to $\pi^\star \propto \pi_{\mathrm{ref}}\,e^{r/\beta_{\mathrm{DRO}}}$. Since the policy here is restricted to 1-D Gaussians and $\pi^\star$ is generally not Gaussian, the residual can't vanish pointwise; the $V$-update only zeroes its $\pi_{\mathrm{ref}}$-mean, so $V$ tracks the dotted line $V_\infty(\theta) = \mathbb{E}_{\pi_{\mathrm{ref}}}[r] + \beta_{\mathrm{DRO}}\,\mathrm{KL}(\pi_{\mathrm{ref}}\,\|\,\pi_\theta)$. The gap to $\beta_{\mathrm{DRO}}\log Z$ is the price of restricting the policy class — by Jensen it is strictly positive whenever $\pi_\theta \neq \pi^\star$.</p>
+      <p>Both conditional targets move as the policy moves. Their gap measures finite-batch sampling error; the lag from the learned $V$ to the batch target measures value-optimizer error. The unrestricted value $\beta_{\mathrm{DRO}}\log Z_{\mathrm{DRO}}$ is shown only as a reference and has no fixed ordering relative to the targets of an arbitrary Gaussian policy.</p>
     </div>
   </div>
 
   <div class="panel">
-    <div class="panel-title">DRO loss over steps <span class="light">· <span class="t-dro">teal = total $\mathcal{L}$</span> · <span style="color:#888">gray dashed = bias $\tfrac12\bar\delta^2$ (removed by $V$)</span></span></div>
+    <div class="panel-title">DRO loss over steps <span class="light">· training batch versus population · gray = value-lag bias</span></div>
     <div class="panel-eq">$\mathcal{L} \;=\; \tfrac{1}{2N}\textstyle\sum_i \delta_i^2 \;=\; \underbrace{\tfrac12\bar\delta^{\,2}}_{\text{bias}} \;+\; \underbrace{\tfrac12\mathrm{Var}(\delta)}_{\text{spread}}$</div>
     <div id="plot-droLoss" class="plot" style="height: 280px;"></div>
     <div class="prose" style="margin-top: 10px; font-size: 13px;">
-      <p>Press <strong>Step</strong> or <strong>Play</strong> and watch the <span class="t-dro">teal</span> MSE fall. The two descent directions split the work: the $V$-update zeroes the mean residual $\bar\delta$, so the <span style="color:#888">gray</span> bias term collapses toward zero, while the $\theta$-update reshapes $\pi_\theta$ to shrink the residual <em>spread</em>. The visible gap between the two curves is that spread term $\tfrac12\mathrm{Var}(\delta)$ — the part $V$ alone cannot touch. It bottoms out at a positive floor: a single 1-D Gaussian can't make $\delta(a)$ constant across all $a$ unless $\pi_\theta = \pi^\star$, which is generally non-Gaussian. <strong>Resample</strong> draws fresh data without clearing the curve, so Monte-Carlo noise shows up as a jump.</p>
+      <p>The batch curve is what the optimizer sees; the population curve is an analytic expectation under $\pi_{\mathrm{ref}}$. A falling batch loss with rising population loss exposes finite-dataset overfitting. The positive floor that remains in both curves is approximation error from representing a bumpy reward with a quadratic Gaussian log-ratio.</p>
     </div>
   </div>
 </div>
@@ -1005,8 +1051,8 @@
 <div class="tab-compare">
   <h2 class="section" style="margin-top:0;"><span class="num">03</span>Compare — six trajectories, one landscape</h2>
   <div class="prose" style="margin-bottom: 14px; max-width: none;">
-    <p>Everything we've seen so far, one map. Press <strong>Run all</strong> in the sidebar to launch each algorithm from the <em>same</em> initial point $(\mu_\theta,\sigma_\theta)$ — the current red dot — with hardcoded default hyperparameters (so the comparison is fair regardless of how you've tweaked the sliders in other tabs). Each algorithm runs for the chosen number of steps; the trajectories are then drawn on top of the shared objective surface.</p>
-    <p style="font-size: 14px;">A few things to look for: (1) the <span class="t-exact">blue</span> exact path is deterministic; everything else is a Monte-Carlo run, so re-running gives different but qualitatively similar traces. (2) <span class="t-pg">PG</span>, <span class="t-ppo">PPO</span>, and <span class="t-pi">GRPO</span> hug the analytic gradient field with sampling noise — PPO and GRPO clip the step, GRPO additionally divides the advantage by the in-batch std. (3) <span class="t-dpo">DPO</span> and <span class="t-dro">DRO</span> minimize <em>different</em> losses — they don't see $J$ directly — yet their paths still climb toward the same $\pi^\star$, often through different intermediate $(\mu,\sigma)$ regions. (4) Switch the reward preset to <em>Two bumps</em> and re-run: the sampling-based methods are more sensitive to which basin they get pulled into early on.</p>
+    <p>Everything we've seen so far, one map. Press <strong>Run all</strong> in the sidebar to launch each algorithm from the <em>same</em> initial point $(\mu_\theta,\sigma_\theta)$ — the current red dot — with fixed default hyperparameters. Each algorithm runs for the chosen number of optimizer steps; the trajectories are then drawn on top of the shared objective surface. This is a controlled visual comparison, not an equal-data-budget benchmark: the online methods refresh rewards, while DPO and DRO reuse fixed offline data.</p>
+    <p style="font-size: 14px;">A few things to look for: (1) the <span class="t-exact">blue</span> exact path is deterministic; everything else depends on sampled data. (2) <span class="t-pg">PG</span>, <span class="t-ppo">PPO</span>, and <span class="t-pi">GRPO</span> estimate the Gaussian $J$ direction with different variance and clipping. (3) <span class="t-dpo">DPO</span> and <span class="t-dro">DRO</span> never see $J$ directly; a rise in $J$ is useful evidence, while a different plateau can be a genuine objective projection rather than failed optimization. (4) Switch reward presets to see when that distinction becomes large.</p>
   </div>
   <div class="panel">
     <div class="panel-title">All six trajectories on the objective surface <span class="light">· click to toggle: <button type="button" class="cmp-toggle t-exact" data-algo="exact">blue = exact $\nabla_{\!\theta} J$</button> · <button type="button" class="cmp-toggle t-pg" data-algo="pg">rose = PG</button> · <button type="button" class="cmp-toggle t-ppo" data-algo="ppo">brown = PPO</button> · <button type="button" class="cmp-toggle t-pi" data-algo="grpo">red = GRPO</button> · <button type="button" class="cmp-toggle t-dpo" data-algo="dpo">purple = DPO</button> · <button type="button" class="cmp-toggle t-dro" data-algo="dro">teal = DRO</button></span></div>
@@ -1014,10 +1060,10 @@
   </div>
 
   <div class="panel" style="margin-top: 20px;">
-    <div class="panel-title">Objective over steps <span class="light">· $J(\theta_t)$ evaluated along each trajectory · dashed = $J(\pi^\star)$</span></div>
+    <div class="panel-title">Objective over steps <span class="light">· $J(\theta_t)$ evaluated along each trajectory · reference lines separate unrestricted and Gaussian ceilings</span></div>
     <div id="plot-cmpJ" class="plot" style="height: 340px;"></div>
     <div class="prose" style="margin-top: 10px; font-size: 13px;">
-      <p>The same runs as the map above, scored by the RLHF objective $J(\theta) = \mathbb{E}[r] - \beta\,\mathrm{KL}$ at every step. This answers what the 2D paths can't: <em>which method climbs fastest, which plateaus, and how far below $J(\pi^\star)$ each one settles.</em> DPO and DRO never see $J$ — watching their curves rise anyway is the whole point. Set <strong>Runs per algorithm</strong> &gt; 1 to get a median line with a min–max band, separating an algorithm's typical behavior from a lucky draw. The toggles in the map's title hide curves here too.</p>
+      <p>The same runs as the map above, scored by the RLHF objective $J(\theta) = \mathbb{E}[r] - \beta\,\mathrm{KL}$ at every step. This answers what the 2D paths can't: <em>which method climbs fastest, which plateaus, and how far below the best Gaussian each one settles.</em> The dotted blue line is the achievable Gaussian ceiling; the dashed gray $J(\pi^\star)$ line is the generally higher unrestricted ceiling. DPO and DRO never see $J$ — watching their curves rise anyway is the point. Set <strong>Runs per algorithm</strong> &gt; 1 to get a median line with a min–max band, separating an algorithm's typical behavior from a lucky draw. The toggles in the map's title hide curves here too.</p>
     </div>
   </div>
 </div>
@@ -1091,8 +1137,10 @@ const S = {
   G: 8, eps: 0.2, lrG: 0.03, Kgrpo: 4,
   // DPO hyperparameters
   betaDPO: 0.5, N: 32, lrDPO: 0.05, prefNoise: 0.5,
-  // DRO hyperparameters + learned baseline V
+  // DRO hyperparameters + learned value V. `droMode` selects the legacy raw
+  // gradient, practical DRO-V conditioning, or exact profiling of scalar V.
   betaDRO: 0.5, NDRO: 32, lrDROth: 0.05, lrDROv: 0.1, Vdro: 0,
+  droMode: "practical", droSurface: "population", droDatasetId: 0,
   // PG snapshot: fresh samples each step from current π_θ
   pg:   { samples: [], rewards: [], advs: [] },
   // PPO snapshot: samples drawn from frozen π_old; reused until Resample
@@ -1113,7 +1161,8 @@ const S = {
   trajVdro:  [],
   // DPO accuracy history: one {acc, piAcc, refAcc} per step (pre-update θ)
   dpoAccHist: [],
-  // DRO loss history: one {loss, bias, variance} per step (pre-update θ, V)
+  // DRO diagnostics per step (pre-update θ,V): batch/population loss and
+  // the corresponding moving conditional targets for V.
   droLossHist: [],
   // Compare-tab J-vs-step curves: { algo: [run0Jcurve, run1Jcurve, ...] }
   cmpJ: null,
@@ -1213,6 +1262,59 @@ function gradJ(mu, sig) {
   const [gkmu, gksig] = gradKL(mu, sig);
   return [gemu - S.beta*gkmu, gesig - S.beta*gksig];
 }
+
+/* Best member of the displayed Gaussian policy class.  This is deliberately
+   separate from computeStar(): computeStar() returns moments of the
+   unrestricted Boltzmann policy, which need not maximize J(mu, sigma).
+
+   A moderately fine global scan followed by a shrinking pattern search is
+   cheap for this two-parameter analytic objective and is more robust to the
+   multi-bump presets than starting a local optimizer at pi_ref. */
+let _gaussianJOracleCache = { key: "", val: null };
+function computeGaussianJOracle(bounds = {}) {
+  const muMin  = Number.isFinite(bounds.muMin)  ? bounds.muMin  : -4;
+  const muMax  = Number.isFinite(bounds.muMax)  ? bounds.muMax  :  4;
+  const sigMin = Number.isFinite(bounds.sigMin) ? Math.max(1e-6, bounds.sigMin) : 0.03;
+  const sigMax = Number.isFinite(bounds.sigMax) ? bounds.sigMax : 3;
+  if (!(muMin < muMax && sigMin < sigMax)) throw new Error('invalid Gaussian-oracle bounds');
+  const key = `${S.rewardPreset}|${S.beta}|${S.muRef}|${S.sigRef}|${muMin}|${muMax}|${sigMin}|${sigMax}`;
+  if (_gaussianJOracleCache.key === key) return _gaussianJOracleCache.val;
+
+  const nMu = 81, nSig = 61;
+  let bestMu = muMin, bestSig = sigMin, bestJ = -Infinity;
+  for (let j = 0; j < nSig; j++) {
+    const sig = sigMin + (sigMax - sigMin) * j / (nSig - 1);
+    for (let i = 0; i < nMu; i++) {
+      const mu = muMin + (muMax - muMin) * i / (nMu - 1);
+      const J = objective(mu, sig);
+      if (J > bestJ) { bestMu = mu; bestSig = sig; bestJ = J; }
+    }
+  }
+
+  let stepMu = (muMax - muMin) / (nMu - 1);
+  let stepSig = (sigMax - sigMin) / (nSig - 1);
+  const directions = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+  for (let iter = 0; iter < 160 && Math.max(stepMu, stepSig) > 1e-7; iter++) {
+    let nextMu = bestMu, nextSig = bestSig, nextJ = bestJ;
+    for (const [dm, ds] of directions) {
+      const mu = Math.max(muMin, Math.min(muMax, bestMu + dm * stepMu));
+      const sig = Math.max(sigMin, Math.min(sigMax, bestSig + ds * stepSig));
+      const J = objective(mu, sig);
+      if (J > nextJ + 1e-14) { nextMu = mu; nextSig = sig; nextJ = J; }
+    }
+    if (nextJ > bestJ + 1e-14) {
+      bestMu = nextMu; bestSig = nextSig; bestJ = nextJ;
+    } else {
+      stepMu *= 0.5;
+      stepSig *= 0.5;
+    }
+  }
+  const val = { mu: bestMu, sig: bestSig, J: bestJ, bounds: { muMin, muMax, sigMin, sigMax } };
+  _gaussianJOracleCache = { key, val };
+  return val;
+}
+// Short semantic alias for callers that do not need to know the search method.
+function gaussianRLHFOracle(bounds = {}) { return computeGaussianJOracle(bounds); }
 
 /* ============================================================
    π*(a) ∝ π_ref(a) exp(r(a)/β)   — numerical
@@ -1425,23 +1527,330 @@ function droResidualAt(a, r, mu, sig, V, betaDRO) {
   return r - V - betaDRO * (logGauss(a, mu, sig) - logGauss(a, S.muRef, S.sigRef));
 }
 
-function droStepCore(mu, sig, V, data /* {samples, rewards} */, p /* {betaDRO, lrTh, lrV} */) {
+/* -------------------------------------------------------------------------
+   DRO diagnostics and exact toy-model oracles
+
+   For Gaussian policies, log(pi_theta/pi_ref) is a quadratic in a.  These
+   helpers expose that structure without changing the learned-V algorithm:
+
+     - empirical/population V targets and profiled loss/gradients;
+     - empirical/population constrained least-squares Gaussian optima.
+
+   Population quantities below are analytic under the Gaussian reference;
+   they do not inherit the truncation error of the plotting grid A_GRID.
+   ------------------------------------------------------------------------- */
+function gaussianLogRatioCoefficients(mu, sig) {
+  if (!(sig > 0)) throw new Error('Gaussian sigma must be positive');
+  const refVar = S.sigRef * S.sigRef, varTh = sig * sig;
+  return [
+    Math.log(S.sigRef / sig) - mu*mu/(2*varTh) + S.muRef*S.muRef/(2*refVar),
+    mu/varTh - S.muRef/refVar,
+    0.5/refVar - 0.5/varTh,
+  ];
+}
+
+// Raw moments E[X^k], k=0..maxOrder, for X ~ N(mu, sig^2).
+function gaussianRawMoments(mu, sig, maxOrder) {
+  const out = new Array(maxOrder + 1).fill(0);
+  out[0] = 1;
+  if (maxOrder >= 1) out[1] = mu;
+  const variance = sig * sig;
+  for (let k = 2; k <= maxOrder; k++) out[k] = mu*out[k-1] + (k-1)*variance*out[k-2];
+  return out;
+}
+
+// E[X^k * bump(X)] for the bump representation used by REWARD_PRESETS.
+function bumpWeightedMoments(bump, mu, sig, maxOrder) {
+  const sig2 = sig*sig, bump2 = bump.s*bump.s;
+  const total = sig2 + bump2;
+  const mass = bump.w * (bump.s / Math.sqrt(total))
+             * Math.exp(-(mu-bump.c)*(mu-bump.c)/(2*total));
+  const tiltedVar = sig2 * bump2 / total;
+  const tiltedMu = (mu*bump2 + bump.c*sig2) / total;
+  const tilted = gaussianRawMoments(tiltedMu, Math.sqrt(tiltedVar), maxOrder);
+  return tilted.map(x => mass * x);
+}
+
+function droPopulationMomentSummary() {
+  const key = `${S.rewardPreset}|${S.muRef}|${S.sigRef}`;
+  if (droPopulationMomentSummary._cache && droPopulationMomentSummary._cache.key === key) {
+    return droPopulationMomentSummary._cache.val;
+  }
+  const xMoments = gaussianRawMoments(S.muRef, S.sigRef, 4);
+  const rMoments = [0, 0, 0];
+  const bs = bumps();
+  for (const b of bs) {
+    const m = bumpWeightedMoments(b, S.muRef, S.sigRef, 2);
+    for (let k = 0; k <= 2; k++) rMoments[k] += m[k];
+  }
+
+  // r^2 is a sum over products of Gaussian bumps.  Each product is another
+  // (scaled) Gaussian bump, so its reference expectation is analytic too.
+  let r2 = 0;
+  for (const bi of bs) for (const bj of bs) {
+    const vi = bi.s*bi.s, vj = bj.s*bj.s;
+    const productVar = 1 / (1/vi + 1/vj);
+    const productCenter = productVar * (bi.c/vi + bj.c/vj);
+    const logScale = -0.5 * (bi.c*bi.c/vi + bj.c*bj.c/vj
+                           - productCenter*productCenter/productVar);
+    const product = {
+      w: bi.w * bj.w * Math.exp(logScale),
+      c: productCenter,
+      s: Math.sqrt(productVar),
+    };
+    r2 += bumpWeightedMoments(product, S.muRef, S.sigRef, 0)[0];
+  }
+  const val = { xMoments, rMoments, r2, source: 'population' };
+  droPopulationMomentSummary._cache = { key, val };
+  return val;
+}
+
+function droEmpiricalMomentSummary(data) {
+  const n = data && data.samples ? data.samples.length : 0;
+  if (!n || !data.rewards || data.rewards.length !== n) {
+    throw new Error('DRO data must contain equally sized, non-empty samples and rewards');
+  }
+  const xMoments = new Array(5).fill(0);
+  const rMoments = new Array(3).fill(0);
+  let r2 = 0;
+  for (let i = 0; i < n; i++) {
+    const a = data.samples[i], r = data.rewards[i];
+    let power = 1;
+    for (let k = 0; k <= 4; k++) {
+      xMoments[k] += power;
+      if (k <= 2) rMoments[k] += r * power;
+      power *= a;
+    }
+    r2 += r*r;
+  }
+  for (let k = 0; k <= 4; k++) xMoments[k] /= n;
+  for (let k = 0; k <= 2; k++) rMoments[k] /= n;
+  return { xMoments, rMoments, r2: r2/n, source: 'empirical', n };
+}
+
+function polynomialExpectation(coefficients, moments, offset = 0) {
+  let out = 0;
+  for (let k = 0; k < coefficients.length; k++) out += coefficients[k] * moments[k + offset];
+  return out;
+}
+
+// Profile V out of 1/2 E[(r - V - beta log(pi/pi_ref))^2].  The returned
+// gradients are derivatives of the profiled loss (envelope theorem).
+function droProfiledStatsFromMoments(mu, sig, betaDRO, summary) {
+  if (!(betaDRO > 0)) throw new Error('betaDRO must be positive');
+  const M = summary.xMoments, R = summary.rMoments;
+  const q = gaussianLogRatioCoefficients(mu, sig);
+  const qMoments = [0, 1, 2].map(k => polynomialExpectation(q, M, k));
+  const yMoments = [0, 1, 2].map(k => R[k] - betaDRO*qMoments[k]);
+  const Erq = q[0]*R[0] + q[1]*R[1] + q[2]*R[2];
+  let Eq2 = 0;
+  for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) Eq2 += q[i]*q[j]*M[i+j];
+  const Ey2 = summary.r2 - 2*betaDRO*Erq + betaDRO*betaDRO*Eq2;
+  const V = yMoments[0];
+  const variance = Math.max(0, Ey2 - V*V);
+
+  const sig2 = sig*sig, sig3 = sig2*sig;
+  const scoreMu = [-mu/sig2, 1/sig2, 0];
+  const scoreSig = [-1/sig + mu*mu/sig3, -2*mu/sig3, 1/sig3];
+  const covarianceWithY = score => {
+    const EyScore = score[0]*yMoments[0] + score[1]*yMoments[1] + score[2]*yMoments[2];
+    const EScore = polynomialExpectation(score, M);
+    return EyScore - V*EScore;
+  };
+  const gradMu = -betaDRO * covarianceWithY(scoreMu);
+  const gradSig = -betaDRO * covarianceWithY(scoreSig);
+  const gradLogSig = sig * gradSig;
+  return {
+    V, VTarget: V, loss: 0.5*variance, variance,
+    gradMu, gradSig, gradLogSig,
+    gradient: { mu: gradMu, sig: gradSig, logSig: gradLogSig },
+    practicalGradient: { mu: gradMu/betaDRO, logSig: gradLogSig/betaDRO },
+    source: summary.source,
+  };
+}
+
+function droEmpiricalProfiledStats(mu, sig, data, betaDRO) {
+  return droProfiledStatsFromMoments(mu, sig, betaDRO, droEmpiricalMomentSummary(data));
+}
+function droPopulationProfiledStats(mu, sig, betaDRO) {
+  return droProfiledStatsFromMoments(mu, sig, betaDRO, droPopulationMomentSummary());
+}
+function droEmpiricalVTarget(mu, sig, data, betaDRO) {
+  return droEmpiricalProfiledStats(mu, sig, data, betaDRO).V;
+}
+function droPopulationVTarget(mu, sig, betaDRO) {
+  return droPopulationProfiledStats(mu, sig, betaDRO).V;
+}
+function droEmpiricalProfiledLoss(mu, sig, data, betaDRO) {
+  return droEmpiricalProfiledStats(mu, sig, data, betaDRO).loss;
+}
+function droPopulationProfiledLoss(mu, sig, betaDRO) {
+  return droPopulationProfiledStats(mu, sig, betaDRO).loss;
+}
+function droEmpiricalProfiledGradient(mu, sig, data, betaDRO) {
+  const s = droEmpiricalProfiledStats(mu, sig, data, betaDRO);
+  return [s.gradMu, s.gradSig];
+}
+function droPopulationProfiledGradient(mu, sig, betaDRO) {
+  const s = droPopulationProfiledStats(mu, sig, betaDRO);
+  return [s.gradMu, s.gradSig];
+}
+
+function normalizedDROPolicyBounds(bounds = {}) {
+  const out = {
+    muMin: Number.isFinite(bounds.muMin) ? bounds.muMin : -4,
+    muMax: Number.isFinite(bounds.muMax) ? bounds.muMax : 4,
+    sigMin: Number.isFinite(bounds.sigMin) ? Math.max(1e-6, bounds.sigMin) : 0.03,
+    sigMax: Number.isFinite(bounds.sigMax) ? bounds.sigMax : 3,
+  };
+  if (!(out.muMin < out.muMax && out.sigMin < out.sigMax)) throw new Error('invalid DRO-oracle bounds');
+  return out;
+}
+
+/* Solve the profiled quadratic regression in Gaussian natural parameters.
+   The feasible (eta1, eta2) set induced by box bounds on (mu, sigma) is a
+   convex quadrilateral, so checking the unconstrained point and the exact
+   one-dimensional minimizer on each edge gives the global constrained
+   least-squares solution. */
+function droNaturalLeastSquaresOracleFromMoments(summary, betaDRO, bounds = {}) {
+  if (!(betaDRO > 0)) throw new Error('betaDRO must be positive');
+  const bnd = normalizedDROPolicyBounds(bounds);
+  const M = summary.xMoments, R = summary.rMoments;
+  const C11 = M[2] - M[1]*M[1];
+  const C12 = M[3] - M[1]*M[2];
+  const C22 = M[4] - M[2]*M[2];
+  const k1 = R[1] - R[0]*M[1];
+  const k2 = R[2] - R[0]*M[2];
+  let det = C11*C22 - C12*C12;
+  // Degenerate tiny batches can make the quadratic rank deficient.  A
+  // scale-aware ridge keeps the debugging oracle finite and deterministic.
+  let H11 = C11, H22 = C22, H12 = C12;
+  if (!(det > 1e-14 * Math.max(1, C11*C22))) {
+    const ridge = 1e-10 * Math.max(1, C11, C22);
+    H11 += ridge; H22 += ridge;
+    det = H11*H22 - H12*H12;
+  }
+  const slopeUnconstrained = [
+    ( H22*k1 - H12*k2) / det,
+    (-H12*k1 + H11*k2) / det,
+  ];
+  const etaRef = [S.muRef/(S.sigRef*S.sigRef), -1/(2*S.sigRef*S.sigRef)];
+  const etaUnconstrained = [
+    etaRef[0] + slopeUnconstrained[0]/betaDRO,
+    etaRef[1] + slopeUnconstrained[1]/betaDRO,
+  ];
+  const eta2Lo = -1/(2*bnd.sigMin*bnd.sigMin);
+  const eta2Hi = -1/(2*bnd.sigMax*bnd.sigMax);
+  const eta1Lo = eta2 => -2*bnd.muMin*eta2;
+  const eta1Hi = eta2 => -2*bnd.muMax*eta2;
+  const feasible = eta => eta[1] >= eta2Lo-1e-12 && eta[1] <= eta2Hi+1e-12
+                       && eta[0] >= eta1Lo(eta[1])-1e-12
+                       && eta[0] <= eta1Hi(eta[1])+1e-12;
+  const slopeAt = eta => [betaDRO*(eta[0]-etaRef[0]), betaDRO*(eta[1]-etaRef[1])];
+  const slopeObjective = slope => 0.5*(C11*slope[0]*slope[0]
+                                            + 2*C12*slope[0]*slope[1]
+                                            + C22*slope[1]*slope[1])
+                                         - k1*slope[0] - k2*slope[1];
+  const candidates = [];
+  if (feasible(etaUnconstrained)) candidates.push(etaUnconstrained);
+  const vertices = [
+    [eta1Lo(eta2Lo), eta2Lo], [eta1Hi(eta2Lo), eta2Lo],
+    [eta1Hi(eta2Hi), eta2Hi], [eta1Lo(eta2Hi), eta2Hi],
+  ];
+  for (let edge = 0; edge < vertices.length; edge++) {
+    const e0 = vertices[edge], e1 = vertices[(edge+1) % vertices.length];
+    const s0 = slopeAt(e0), s1 = slopeAt(e1);
+    const d0 = s1[0]-s0[0], d1 = s1[1]-s0[1];
+    const denom = C11*d0*d0 + 2*C12*d0*d1 + C22*d1*d1;
+    let t = 0;
+    if (denom > 1e-20) {
+      t = (k1*d0 + k2*d1 - (C11*s0[0]*d0 + C12*(s0[0]*d1+s0[1]*d0) + C22*s0[1]*d1)) / denom;
+    }
+    t = Math.max(0, Math.min(1, t));
+    candidates.push([e0[0] + t*(e1[0]-e0[0]), e0[1] + t*(e1[1]-e0[1])]);
+  }
+  let eta = candidates[0], best = slopeObjective(slopeAt(eta));
+  for (let i = 1; i < candidates.length; i++) {
+    const value = slopeObjective(slopeAt(candidates[i]));
+    if (value < best) { eta = candidates[i]; best = value; }
+  }
+  const slope = slopeAt(eta);
+  const sig = Math.sqrt(-1/(2*eta[1]));
+  const mu = -eta[0]/(2*eta[1]);
+  const intercept = R[0] - slope[0]*M[1] - slope[1]*M[2];
+  const q0 = gaussianLogRatioCoefficients(mu, sig)[0];
+  const V = intercept - betaDRO*q0;
+  const loss = Math.max(0, 0.5*(summary.r2 - R[0]*R[0] + 2*best));
+  const unconstrainedValid = etaUnconstrained[1] < 0;
+  const unconstrained = {
+    eta1: etaUnconstrained[0], eta2: etaUnconstrained[1],
+    mu: unconstrainedValid ? -etaUnconstrained[0]/(2*etaUnconstrained[1]) : null,
+    sig: unconstrainedValid ? Math.sqrt(-1/(2*etaUnconstrained[1])) : null,
+    feasible: feasible(etaUnconstrained),
+  };
+  return {
+    mu, sig, V, loss,
+    eta1: eta[0], eta2: eta[1],
+    naturalParameters: { eta1: eta[0], eta2: eta[1] },
+    coefficients: { constant: intercept, linear: slope[0], quadratic: slope[1] },
+    constrained: !unconstrained.feasible,
+    unconstrained, bounds: bnd, source: summary.source,
+  };
+}
+
+function droEmpiricalOracle(data, betaDRO, bounds = {}) {
+  return droNaturalLeastSquaresOracleFromMoments(droEmpiricalMomentSummary(data), betaDRO, bounds);
+}
+let _droPopulationOracleCache = { key: '', val: null };
+function droPopulationOracle(betaDRO, bounds = {}) {
+  const bnd = normalizedDROPolicyBounds(bounds);
+  const key = `${S.rewardPreset}|${S.muRef}|${S.sigRef}|${betaDRO}|${bnd.muMin}|${bnd.muMax}|${bnd.sigMin}|${bnd.sigMax}`;
+  if (_droPopulationOracleCache.key === key) return _droPopulationOracleCache.val;
+  const val = droNaturalLeastSquaresOracleFromMoments(droPopulationMomentSummary(), betaDRO, bnd);
+  _droPopulationOracleCache = { key, val };
+  return val;
+}
+
+function droStepCore(mu, sig, V, data /* {samples, rewards} */,
+                     p /* {betaDRO, lrTh, lrV, mode?: raw|practical|profile} */) {
+  const mode = p.mode || 'raw';
+  if (!['raw', 'practical', 'profile'].includes(mode)) throw new Error(`unknown DRO mode: ${mode}`);
+  if (!(p.betaDRO > 0)) throw new Error('betaDRO must be positive');
   const n = data.samples.length;
+  if (!n || !data.rewards || data.rewards.length !== n) throw new Error('DRO step requires a non-empty batch');
+  // Profile mode removes the scalar intercept exactly before taking the
+  // policy step.  Learned-V modes retain the caller-provided V.
+  const VUsed = mode === 'profile' ? droEmpiricalVTarget(mu, sig, data, p.betaDRO) : V;
   let gMu = 0, gSig = 0, gV = 0;
   for (let i = 0; i < n; i++) {
     const a = data.samples[i];
-    const d = droResidualAt(a, data.rewards[i], mu, sig, V, p.betaDRO);
+    const d = droResidualAt(a, data.rewards[i], mu, sig, VUsed, p.betaDRO);
     const [dMu, dSig] = dlogPi(a, mu, sig);
     gMu  += -d * p.betaDRO * dMu;
     gSig += -d * p.betaDRO * dSig;
     gV   += -d;
   }
   gMu /= n; gSig /= n; gV /= n;
-  // gradient *descent* on the MSE loss, jointly in θ and V
+  let nextMu, nextSig;
+  if (mode === 'raw') {
+    // Legacy gradient descent directly in (mu, sigma).  Keeping this path
+    // bit-for-bit compatible makes the scaling/parameterization ablation fair.
+    nextMu = clamp(mu - p.lrTh*gMu, -4, 4);
+    nextSig = clamp(sig - p.lrTh*gSig, 0.03, 3);
+  } else {
+    // Practical DRO-V cancels the explicit beta factor in the policy gradient
+    // and optimizes log(sigma), avoiding the 1/sigma^3 direct-sigma update.
+    nextMu = clamp(mu - p.lrTh*(gMu/p.betaDRO), -4, 4);
+    const nextLogSig = clamp(Math.log(sig) - p.lrTh*(sig*gSig/p.betaDRO), Math.log(0.03), Math.log(3));
+    nextSig = Math.exp(nextLogSig);
+  }
+  const nextV = mode === 'profile'
+    ? droEmpiricalVTarget(nextMu, nextSig, data, p.betaDRO)
+    : clamp(V - p.lrV*gV, -10, 10);
   return {
-    mu:  clamp(mu  - p.lrTh * gMu,  -4, 4),
-    sig: clamp(sig - p.lrTh * gSig, 0.03, 3),
-    V:   clamp(V   - p.lrV  * gV,  -10, 10),
+    mu: nextMu, sig: nextSig, V: nextV,
+    mode, VUsed,
+    gradient: { mu: gMu, sig: gSig, logSig: sig*gSig, V: gV },
   };
 }
 
@@ -1646,9 +2055,15 @@ function droResidual(a, r) {
 
 function droResample() {
   const b = sampleBatch(S.muRef, S.sigRef, S.NDRO);  // offline: a_i ~ π_ref
+  clearDRODiagnostics();
   S.dro.samples = b.samples;
   S.dro.rewards = b.rewards;
   S.dro.selected = null;
+  S.droDatasetId++;
+  if (S.droMode === 'profile') {
+    S.Vdro = droEmpiricalVTarget(S.muTh, S.sigTh, b, S.betaDRO);
+    document.getElementById('val-Vdro').textContent = S.Vdro.toFixed(3);
+  }
   recomputeDROQuantities();
   renderAll();
 }
@@ -1661,30 +2076,90 @@ function recomputeDROQuantities() {
   }
 }
 
-// DRO loss decomposition at the current (θ, V) over the current sample set.
-//   loss     : ½·mean(δ²) — the MSE objective DRO descends
-//   bias     : ½·(mean δ)² — the slice the V-update removes (drives mean δ → 0)
-//   variance : ½·Var(δ)    — residual spread, only θ can shrink it (to a floor)
-function droLossParts() {
-  const n = S.dro.samples.length;
-  if (n === 0) return null;
-  let s = 0, s2 = 0;
-  for (let i = 0; i < n; i++) {
-    const d = droResidual(S.dro.samples[i], S.dro.rewards[i]);
-    s += d; s2 += d * d;
+function clearDRODiagnostics({ dropData=false, resetValue=false }={}) {
+  S.trajDRO = [];
+  S.trajVdro = [];
+  S.droLossHist = [];
+  S.cmpJ = null;
+  if (resetValue) S.Vdro = 0;
+  if (dropData) {
+    S.dro = { samples: [], rewards: [], residuals: [], selected: null };
+    S.droDatasetId++;
+  } else {
+    // Profile mode promises that V is the exact conditional batch optimum,
+    // including after a manual policy/temperature change clears the run.
+    if (S.droMode === 'profile' && S.dro.samples.length) {
+      S.Vdro = droEmpiricalVTarget(S.muTh, S.sigTh,
+        {samples:S.dro.samples,rewards:S.dro.rewards}, S.betaDRO);
+    }
+    recomputeDROQuantities();
   }
-  const mean = s / n, msq = s2 / n;
-  return { loss: 0.5 * msq, bias: 0.5 * mean * mean, variance: 0.5 * (msq - mean * mean) };
+  const vEl = document.getElementById('val-Vdro');
+  if (vEl) vEl.textContent = S.Vdro.toFixed(3);
+}
+
+function droLossPartsFromProfile(profile, V) {
+  const meanResidual = profile.VTarget - V;
+  const bias = 0.5 * meanResidual * meanResidual;
+  return {
+    loss: profile.loss + bias,
+    bias,
+    variance: profile.loss,
+    meanResidual,
+    VTarget: profile.VTarget,
+  };
+}
+
+// One aligned diagnostic snapshot. Historical plots consume these stored
+// values so old targets are never recomputed using the current policy.
+function droDiagnosticsAt(mu=S.muTh, sig=S.sigTh, V=S.Vdro) {
+  const populationProfile = droPopulationProfiledStats(mu, sig, S.betaDRO);
+  const population = droLossPartsFromProfile(populationProfile, V);
+  let batch = null;
+  if (S.dro.samples.length > 0) {
+    batch = droLossPartsFromProfile(
+      droEmpiricalProfiledStats(mu, sig,
+        { samples:S.dro.samples, rewards:S.dro.rewards }, S.betaDRO), V);
+  }
+  return {
+    mu, sig, V, mode:S.droMode, datasetId:S.droDatasetId,
+    batch, population,
+    // Compatibility aliases used by older rendering code until all callers
+    // consume the explicit `batch` object.
+    loss: batch ? batch.loss : null,
+    bias: batch ? batch.bias : null,
+    variance: batch ? batch.variance : null,
+  };
+}
+
+function droLossParts() {
+  return S.dro.samples.length ? droDiagnosticsAt() : null;
 }
 
 function droStep() {
   if (S.dro.samples.length === 0) droResample();
   S.trajDRO.push([S.muTh, S.sigTh]);
   S.trajVdro.push(S.Vdro);
-  S.droLossHist.push(droLossParts());     // loss at the pre-update (θ, V)
+  S.droLossHist.push(droDiagnosticsAt()); // aligned pre-update snapshot
   const out = droStepCore(S.muTh, S.sigTh, S.Vdro,
     { samples: S.dro.samples, rewards: S.dro.rewards },
-    { betaDRO: S.betaDRO, lrTh: S.lrDROth, lrV: S.lrDROv });
+    { betaDRO: S.betaDRO, lrTh: S.lrDROth, lrV: S.lrDROv, mode: S.droMode });
+  S.muTh = out.mu; S.sigTh = out.sig; S.Vdro = out.V;
+  syncSliders();
+  document.getElementById('val-Vdro').textContent = S.Vdro.toFixed(3);
+  recomputeDROQuantities();
+  renderAll();
+}
+
+// Toy-only oracle: because a Gaussian log-ratio is quadratic in action, the
+// fixed-batch DRO optimum is a constrained three-feature least-squares fit.
+function droSolveBatch() {
+  if (S.dro.samples.length === 0) droResample();
+  S.trajDRO.push([S.muTh, S.sigTh]);
+  S.trajVdro.push(S.Vdro);
+  S.droLossHist.push(droDiagnosticsAt());
+  const out = droEmpiricalOracle(
+    { samples:S.dro.samples, rewards:S.dro.rewards }, S.betaDRO);
   S.muTh = out.mu; S.sigTh = out.sig; S.Vdro = out.V;
   syncSliders();
   document.getElementById('val-Vdro').textContent = S.Vdro.toFixed(3);
@@ -1694,7 +2169,7 @@ function droStep() {
 
 /* ============================================================
    COMPARE — run all six algorithms from the same starting
-   (mu_th, sig_th) with hardcoded default hyperparameters, record
+   (mu_th, sig_th) with fixed default hyperparameters, record
    their trajectories and J-vs-step curves, and restore the policy.
    Every update goes through the same *StepCore used by the
    interactive tabs, so the two paths cannot drift apart.
@@ -1723,10 +2198,12 @@ function compareRunAll() {
     G:    Math.max(2, Math.round(COMPARE_DEFAULTS.G    * scale)),
     N:    Math.max(1, Math.round(COMPARE_DEFAULTS.N    * scale)),
     NDRO: Math.max(2, Math.round(COMPARE_DEFAULTS.NDRO * scale)),
+    // Compare each method against the experiment's target temperature.
+    betaDRO: S.beta,
   });
 
-  // One full trajectory per algorithm. `first` lets DRO publish its V
-  // history (used by the DRO tab's baseline panel) for run 0 only.
+  // One full trajectory per algorithm. Compare runs remain isolated from the
+  // interactive DRO value/loss diagnostics.
   const runners = {
     exact() {
       let mu = muStart, sig = sigStart;
@@ -1796,21 +2273,19 @@ function compareRunAll() {
       traj.push([mu, sig]);
       return traj;
     },
-    dro(first) {
+    dro() {
       // offline (a_i ~ π_ref), jointly fit θ and V; V starts at 0
       let mu = muStart, sig = sigStart, V = 0;
       const data = sampleBatch(S.muRef, S.sigRef, D.NDRO);
-      const traj = [], vtraj = [];
+      const traj = [];
       for (let i = 0; i < numSteps; i++) {
         traj.push([mu, sig]);
-        vtraj.push(V);
         const out = droStepCore(mu, sig, V, data,
-                                { betaDRO: D.betaDRO, lrTh: D.lrDROth, lrV: D.lrDROv });
+                                { betaDRO: D.betaDRO, lrTh: D.lrDROth,
+                                  lrV: D.lrDROv, mode: 'practical' });
         mu = out.mu; sig = out.sig; V = out.V;
       }
       traj.push([mu, sig]);
-      vtraj.push(V);
-      if (first) S.trajVdro = vtraj;
       return traj;
     },
   };
@@ -1823,7 +2298,7 @@ function compareRunAll() {
     const nRuns = (algo === 'exact') ? 1 : runs;   // exact is deterministic
     S.cmpJ[algo] = [];
     for (let k = 0; k < nRuns; k++) {
-      const traj = runners[algo](k === 0);
+      const traj = runners[algo]();
       if (k === 0) S[trajKey[algo]] = traj;        // map shows the first run
       S.cmpJ[algo].push(traj.map(pt => objective(pt[0], pt[1])));
     }
@@ -1892,6 +2367,8 @@ function writeHash() {
     }
   }
   if (S.rewardPreset !== 'single') parts.push(`rewardPreset=${S.rewardPreset}`);
+  if (S.droMode !== 'practical') parts.push(`droMode=${S.droMode}`);
+  if (S.droSurface !== 'population') parts.push(`droSurface=${S.droSurface}`);
   if (S.seed > 0) parts.push(`seed=${S.seed}`);
   const tab = document.body.getAttribute('data-active-tab');
   if (tab !== 'rlhf') parts.push(`tab=${tab}`);
@@ -1914,6 +2391,16 @@ function readHash() {
   if (preset && REWARD_PRESETS[preset]) {
     S.rewardPreset = preset;
     document.getElementById('rewardPreset').value = preset;
+  }
+  const droMode = params.get('droMode');
+  if (['raw','practical','profile'].includes(droMode)) {
+    S.droMode = droMode;
+    document.getElementById('droMode').value = droMode;
+  }
+  const droSurface = params.get('droSurface');
+  if (['j','population','batch'].includes(droSurface)) {
+    S.droSurface = droSurface;
+    document.getElementById('droSurface').value = droSurface;
   }
   const seed = parseInt(params.get('seed'));
   if (seed > 0) {
@@ -1993,6 +2480,7 @@ function renderLandscape(starInfo, targetPlot="plot-landscape", showTraj=false,
                         paths={exact:true, pg:false, ppo:false, grpo:true, dpo:false, dro:false},
                         cornerLegend=false) {
   const Z = computeLandscape();
+  const jOracle = computeGaussianJOracle();
   const traces = [
     { z: Z, x: LAND_MU, y: LAND_SIG, type: "contour",
       colorscale: [[0,"#1a1a1a"],[0.5,"#7a5a2a"],[0.85,"#d8a04b"],[1,"#fff7e0"]],
@@ -2003,9 +2491,15 @@ function renderLandscape(starInfo, targetPlot="plot-landscape", showTraj=false,
       showlegend: false,
     },
     { x: [starInfo.muStar], y: [starInfo.sigStar],
-      mode: "markers", name: "π<sup>★</sup>",
-      marker: { color: C.star, size: 14, line: { color: "white", width: 2 }, symbol: "star" },
-      hovertemplate: "π<sup>★</sup> (μ=%{x:.2f}, σ=%{y:.2f})<extra></extra>",
+      mode: "markers", name: "moments of unrestricted π<sup>★</sup>",
+      marker: { color: C.star, size: 14, line: { color: C.star, width: 2 }, symbol: "star-open" },
+      hovertemplate: "moments of unrestricted π<sup>★</sup><br>μ=%{x:.2f}, σ=%{y:.2f}<extra></extra>",
+      showlegend: cornerLegend },
+    { x: [jOracle.mu], y: [jOracle.sig],
+      mode: "markers", name: "best Gaussian for J",
+      marker: { color: C.accent, size: 11, line: { color: "white", width: 1.5 }, symbol: "diamond" },
+      hovertemplate: "best Gaussian for J<br>μ=%{x:.2f}, σ=%{y:.2f}<br>J=%{customdata:.3f}<extra></extra>",
+      customdata: [jOracle.J],
       showlegend: cornerLegend },
     { x: [S.muTh], y: [S.sigTh],
       mode: "markers", name: "π<sub>θ</sub>",
@@ -2048,6 +2542,210 @@ function renderLandscape(starInfo, targetPlot="plot-landscape", showTraj=false,
     font: { family: "Inter Tight, sans-serif", size: 12, color: "#1a1a1a" },
   };
   Plotly.react(targetPlot, traces, layout, { displayModeBar: false, responsive: true });
+}
+
+let _droLandscapeCache = { population:{key:'', Z:null}, batch:{key:'', Z:null} };
+function computeDROLandscape(kind) {
+  if (!['population','batch'].includes(kind)) throw new Error(`unknown DRO landscape: ${kind}`);
+  const hasBatch = S.dro.samples.length > 0;
+  if (kind === 'batch' && !hasBatch) return null;
+  const key = kind === 'population'
+    ? `${S.rewardPreset}|${S.muRef}|${S.sigRef}|${S.betaDRO}`
+    : `${S.rewardPreset}|${S.muRef}|${S.sigRef}|${S.betaDRO}|${S.droDatasetId}`;
+  const cached = _droLandscapeCache[kind];
+  if (cached.key === key) return cached.Z;
+  const summary = kind === 'population'
+    ? droPopulationMomentSummary()
+    : droEmpiricalMomentSummary({samples:S.dro.samples, rewards:S.dro.rewards});
+  const Z = new Array(LAND_SIG_N);
+  for (let j = 0; j < LAND_SIG_N; j++) {
+    Z[j] = new Array(LAND_MU_N);
+    for (let i = 0; i < LAND_MU_N; i++) {
+      Z[j][i] = droProfiledStatsFromMoments(
+        LAND_MU[i], LAND_SIG[j], S.betaDRO, summary).loss;
+    }
+  }
+  _droLandscapeCache[kind] = { key, Z };
+  return Z;
+}
+
+// DRO loss diverges like 1/sigma^4 near sigma=0. On a linear color scale a
+// few tail cells therefore flatten the useful low-loss basin into one color.
+// This monotone encoding expands that basin and saturates only the darkest
+// 10% of cells; the exact, untransformed loss remains in hover/customdata.
+function sortedQuantile(xs, p) {
+  const h = (xs.length - 1) * p;
+  const lo = Math.floor(h), hi = Math.ceil(h);
+  return xs[lo] + (xs[hi] - xs[lo]) * (h - lo);
+}
+
+function formatSurfaceTick(v) {
+  const a = Math.abs(v);
+  if (a >= 1e4 || (a > 0 && a < 1e-3)) return v.toExponential(1);
+  if (a >= 100) return v.toFixed(0);
+  if (a >= 10) return v.toFixed(1);
+  if (a >= 1) return v.toFixed(2);
+  return v.toFixed(3);
+}
+
+function droLossColorEncoding(rawZ) {
+  const values = rawZ.flat().filter(Number.isFinite).sort((a,b) => a-b);
+  if (!values.length) return {z:rawZ, customdata:rawZ, compressed:false};
+  const floor = values[0];
+  const q10 = sortedQuantile(values, 0.10);
+  const q25 = sortedQuantile(values, 0.25);
+  const q50 = sortedQuantile(values, 0.50);
+  const q75 = sortedQuantile(values, 0.75);
+  const cap = sortedQuantile(values, 0.90);
+  const tol = 1e-12 * Math.max(1, Math.abs(floor), Math.abs(cap));
+  const scale = [q10-floor, q25-floor, q50-floor, (cap-floor)/10]
+    .find(v => v > tol);
+  if (!scale || !(cap > floor + tol)) {
+    return {z:rawZ, customdata:rawZ, compressed:false};
+  }
+  const encode = v => Math.asinh(Math.max(0, v-floor) / scale);
+  const zmax = encode(cap);
+  const tickRaw = [floor,q10,q25,q50,q75,cap]
+    .filter((v,i,xs) => i === 0 || v > xs[i-1] + tol);
+  return {
+    z:rawZ.map(row => row.map(v => Math.min(encode(v), zmax))),
+    customdata:rawZ,
+    zauto:false, zmin:0, zmax,
+    tickvals:tickRaw.map(encode),
+    ticktext:tickRaw.map(formatSurfaceTick),
+    cap, compressed:true,
+  };
+}
+
+function vectorCosine(a, b) {
+  const na = Math.hypot(a[0], a[1]), nb = Math.hypot(b[0], b[1]);
+  return (na > 1e-12 && nb > 1e-12) ? (a[0]*b[0] + a[1]*b[1])/(na*nb) : null;
+}
+
+function scaledDirectionEnd(mu, sig, direction, fraction=0.085) {
+  const sx = LAND_MU_MAX - LAND_MU_MIN;
+  const sy = LAND_SIG_MAX - LAND_SIG_MIN;
+  const dx = direction[0] / sx, dy = direction[1] / sy;
+  const n = Math.hypot(dx, dy);
+  if (!(n > 1e-12)) return [mu, sig];
+  return [
+    clamp(mu + fraction*sx*dx/n, LAND_MU_MIN, LAND_MU_MAX),
+    clamp(sig + fraction*sy*dy/n, LAND_SIG_MIN, LAND_SIG_MAX),
+  ];
+}
+
+function renderDROLandscape(starInfo) {
+  const surfaceEl = document.getElementById('droSurface');
+  const batchOption = surfaceEl.querySelector('option[value="batch"]');
+  const hasBatch = S.dro.samples.length > 0;
+  batchOption.disabled = !hasBatch;
+  if (!hasBatch && S.droSurface === 'batch') {
+    S.droSurface = 'population';
+    surfaceEl.value = S.droSurface;
+  }
+  const kind = S.droSurface;
+  const isJ = kind === 'j';
+  const Z = isJ ? computeLandscape() : computeDROLandscape(kind);
+  const surfaceName = isJ ? 'J' : (kind === 'population' ? 'population L̄' : 'batch L̄');
+  const color = isJ
+    ? {z:Z, customdata:Z, compressed:false}
+    : droLossColorEncoding(Z);
+  document.getElementById('droSurfaceHint').textContent = isJ
+    ? 'Higher is better · experiment β · linear color scale'
+    : color.compressed
+      ? `Lower is better · V profiled out · nonlinear colors reveal the basin · darkest 10% (L ≥ ${formatSurfaceTick(color.cap)}) saturated · hover shows exact loss · βDRO=${S.betaDRO.toFixed(2)}`
+      : `Lower is better · V profiled out · linear color scale · βDRO=${S.betaDRO.toFixed(2)}`;
+
+  const jOracle = computeGaussianJOracle();
+  const popOracle = droPopulationOracle(S.betaDRO);
+  const batchOracle = hasBatch
+    ? droEmpiricalOracle({samples:S.dro.samples, rewards:S.dro.rewards}, S.betaDRO)
+    : null;
+  const surfaceTrace = {
+    z:color.z, customdata:color.customdata, x:LAND_MU, y:LAND_SIG, type:'contour',
+    colorscale:[[0,'#1a1a1a'],[0.5,'#7a5a2a'],[0.85,'#d8a04b'],[1,'#fff7e0']],
+    reversescale:!isJ,
+    contours:{coloring:'heatmap', showlines:true},
+    ncontours:isJ ? undefined : 18,
+    line:{width:0.4, color:'rgba(0,0,0,0.25)'},
+    colorbar:{
+      title:color.compressed ? `${surfaceName}<br>nonlinear` : surfaceName,
+      thickness:12, len:0.82, x:1.02, tickfont:{size:10},
+      ...(color.compressed ? {
+        tickmode:'array', tickvals:color.tickvals, ticktext:color.ticktext,
+      } : {}),
+    },
+    hovertemplate:`μ=%{x:.2f}<br>σ=%{y:.2f}<br>${surfaceName}=%{customdata:.4g}<extra></extra>`,
+    showlegend:false,
+    ...(color.compressed ? {zauto:false,zmin:color.zmin,zmax:color.zmax} : {}),
+  };
+  const traces = [surfaceTrace];
+  const marker = (point, name, color, symbol, size=11, extra='') => ({
+    x:[point.mu], y:[point.sig], mode:'markers', name,
+    marker:{color, size, symbol, line:{color:'white', width:1.5}},
+    hovertemplate:`${name}<br>μ=%{x:.3f}<br>σ=%{y:.3f}${extra}<extra></extra>`,
+    showlegend:true,
+  });
+  traces.push(marker({mu:starInfo.muStar,sig:starInfo.sigStar},
+    'RLHF π★ moments (experiment β)', C.star, 'star-open', 14));
+  traces.push(marker(jOracle, 'best Gaussian J', C.accent, 'diamond', 11,
+    `<br>J=${jOracle.J.toFixed(4)}`));
+  traces.push(marker(popOracle, 'population DRO optimum', C.dro, 'x', 12,
+    `<br>L̄pop=${popOracle.loss.toFixed(4)}`));
+  if (batchOracle) traces.push(marker(batchOracle, 'batch DRO optimum', C.ppo, 'cross', 12,
+    `<br>L̄batch=${batchOracle.loss.toFixed(4)}`));
+
+  const path = S.trajDRO.concat([[S.muTh,S.sigTh]]);
+  if (path.length > 1) traces.push({
+    x:path.map(p=>p[0]), y:path.map(p=>p[1]), mode:'lines+markers', name:'DRO path',
+    line:{color:C.dro, width:2.4}, marker:{color:C.dro, size:4},
+    hovertemplate:'μ=%{x:.3f}<br>σ=%{y:.3f}<extra>DRO path</extra>',
+  });
+  traces.push(marker({mu:S.muTh,sig:S.sigTh}, 'current πθ', C.pi, 'circle', 13));
+
+  const jDirection = gradJ(S.muTh, S.sigTh);
+  const popStats = droPopulationProfiledStats(S.muTh, S.sigTh, S.betaDRO);
+  const popDirection = [-popStats.gradMu, -popStats.gradSig];
+  let batchDirection = null;
+  if (hasBatch) {
+    const bs = droEmpiricalProfiledStats(S.muTh, S.sigTh,
+      {samples:S.dro.samples,rewards:S.dro.rewards}, S.betaDRO);
+    batchDirection = [-bs.gradMu, -bs.gradSig];
+  }
+  const annotations = [];
+  const addDirection = (direction, name, color) => {
+    const end = scaledDirectionEnd(S.muTh, S.sigTh, direction);
+    if (end[0] === S.muTh && end[1] === S.sigTh) return;
+    traces.push({x:[S.muTh,end[0]], y:[S.sigTh,end[1]], mode:'lines', name,
+      line:{color,width:3}, hoverinfo:'skip'});
+    annotations.push({x:end[0], y:end[1], ax:S.muTh, ay:S.sigTh,
+      xref:'x', yref:'y', axref:'x', ayref:'y', text:'', showarrow:true,
+      arrowhead:3, arrowsize:1.1, arrowwidth:2.5, arrowcolor:color});
+  };
+  addDirection(jDirection, 'J ascent', C.accent);
+  addDirection(popDirection, 'population DRO descent', C.dro);
+  if (batchDirection) addDirection(batchDirection, 'batch DRO descent', C.ppo);
+
+  const fmtCos = v => v === null ? 'stationary' : v.toFixed(3);
+  const cPopJ = vectorCosine(popDirection, jDirection);
+  const cBatchJ = batchDirection ? vectorCosine(batchDirection, jDirection) : null;
+  const cBatchPop = batchDirection ? vectorCosine(batchDirection, popDirection) : null;
+  const mismatch = Math.abs(S.betaDRO-S.beta) > 1e-9
+    ? ` · temperature mismatch: β=${S.beta.toFixed(2)}, βDRO=${S.betaDRO.toFixed(2)}` : '';
+  document.getElementById('droGradientReadout').textContent = hasBatch
+    ? `direction cosine · population DRO vs J ${fmtCos(cPopJ)} · batch DRO vs J ${fmtCos(cBatchJ)} · batch vs population ${fmtCos(cBatchPop)}${mismatch}`
+    : `direction cosine · population DRO vs J ${fmtCos(cPopJ)} · resample to compare the finite-batch direction${mismatch}`;
+
+  Plotly.react('plot-trajectoriesDRO', traces, {
+    margin:{l:50,r:70,t:6,b:40},
+    xaxis:{title:'μ<sub>θ</sub>',range:[LAND_MU_MIN,LAND_MU_MAX],gridcolor:'rgba(255,255,255,0.2)'},
+    yaxis:{title:'σ<sub>θ</sub>',range:[LAND_SIG_MIN,LAND_SIG_MAX],gridcolor:'rgba(255,255,255,0.2)'},
+    annotations,
+    plot_bgcolor:'#1a1a1a', paper_bgcolor:'#fff', showlegend:true,
+    legend:{x:0.99,y:0.99,xanchor:'right',yanchor:'top',bgcolor:'rgba(255,255,255,0.92)',
+      bordercolor:'rgba(0,0,0,0.25)',borderwidth:1,font:{size:10,color:'#1a1a1a'}},
+    font:{family:'Inter Tight, sans-serif',size:11,color:'#1a1a1a'},
+  }, {displayModeBar:false,responsive:true});
 }
 
 /* ============================================================
@@ -2474,34 +3172,38 @@ function attachDPOLink() {
    ============================================================ */
 function renderDROPanels() {
   const N = S.dro.samples.length;
-  const emptyLayout = (msg) => ({
-    margin:{l:40,r:10,t:6,b:30},
-    annotations: msg ? [{text: msg, showarrow:false, x:0.5, y:0.5, xref:"paper", yref:"paper", font:{color:"#999"}}] : undefined,
-    xaxis:{visible:false}, yaxis:{visible:false}, plot_bgcolor:"#fff", paper_bgcolor:"#fff",
-  });
-  if (N === 0) {
-    Plotly.react("plot-droSamples",   [], emptyLayout("press Resample in the left sidebar to begin"), { displayModeBar:false, responsive:true });
-    Plotly.react("plot-droResiduals", [], emptyLayout(),                                              { displayModeBar:false, responsive:true });
-    renderDROVPanel();
-    renderDROLoss();
-    return;
-  }
   const samples = S.dro.samples;
   const rewards = S.dro.rewards;
   const res     = S.dro.residuals;
-  const dAbs    = Math.max(1e-6, ...res.map(Math.abs));
-
-  // Panel A: (a_i, r_i) scatter, colored by signed residual δ_i
-  // Overlay r(a) curve and π_ref density (on second y-axis) for context.
+  const dAbs    = Math.max(1e-6, ...(N ? res.map(Math.abs) : [1]));
   const rArr  = A_GRID.map(a => reward(a));
   const refY  = A_GRID.map(a => gauss(a, S.muRef, S.sigRef));
-  Plotly.react("plot-droSamples", [
-    { x: A_GRID, y: rArr, mode:"lines", name:"r(a)",
-      line:{color:C.reward, width:1.5}, fill:"tozeroy",
-      fillcolor:"rgba(176,123,28,0.10)", hoverinfo:"skip", showlegend:false },
-    { x: A_GRID, y: refY, mode:"lines", name:"π<sub>ref</sub>", yaxis:"y2",
-      line:{color:C.ref, width:1, dash:"dot"}, hoverinfo:"skip", showlegend:false },
-    { x: samples, y: rewards, mode:"markers",
+  const fitted = A_GRID.map(a => S.Vdro + S.betaDRO *
+    (logGauss(a, S.muTh, S.sigTh) - logGauss(a, S.muRef, S.sigRef)));
+  const residualCurve = rArr.map((r, i) => r - fitted[i]);
+  const fitAtSamples = samples.map(a => S.Vdro + S.betaDRO *
+    (logGauss(a, S.muTh, S.sigTh) - logGauss(a, S.muRef, S.sigRef)));
+  const gapX = [], gapY = [];
+  for (let i = 0; i < N; i++) {
+    gapX.push(samples[i], samples[i], null);
+    gapY.push(fitAtSamples[i], rewards[i], null);
+  }
+  // Keep quadratic tail extrapolation from flattening the covered region.
+  const maxRef = Math.max(...refY);
+  const covered = A_GRID.map((_,i)=>i).filter(i => refY[i] >= 0.01*maxRef);
+  const fitScaleValues = covered.flatMap(i => [rArr[i], fitted[i]]).concat(rewards);
+  const fitLo = Math.min(...fitScaleValues), fitHi = Math.max(...fitScaleValues);
+  const fitPad = Math.max(0.1, 0.10*(fitHi-fitLo));
+  const fitTraces = [
+    {x:A_GRID,y:rArr,mode:'lines',name:'target r(a)',line:{color:C.reward,width:2.2},hovertemplate:'a=%{x:.2f}<br>r=%{y:.3f}<extra>target</extra>'},
+    {x:A_GRID,y:fitted,mode:'lines',name:'fitted r̂θ,V(a)',line:{color:C.dro,width:2.2},
+      fill:'tonexty',fillcolor:'rgba(14,131,136,0.10)',hovertemplate:'a=%{x:.2f}<br>r̂=%{y:.3f}<extra>fit</extra>'},
+    {x:A_GRID,y:refY,mode:'lines',name:'offline coverage πref',yaxis:'y2',
+      line:{color:C.ref,width:1,dash:'dot'},fill:'tozeroy',fillcolor:'rgba(122,127,133,0.06)',hoverinfo:'skip'},
+  ];
+  if (N) fitTraces.push(
+    {x:gapX,y:gapY,mode:'lines',name:'sample residual',line:{color:'rgba(80,80,80,0.32)',width:1},hoverinfo:'skip',showlegend:false},
+    {x:samples,y:rewards,mode:'markers',name:'offline samples',
       marker: {
         size: 10, color: res,
         colorscale: [[0,C.pi],[0.5,"#d8d4c8"],[1,C.dro]],
@@ -2510,35 +3212,40 @@ function renderDROPanels() {
         colorbar: { title:"δ", thickness:10, len:0.85, x:1.02, tickfont:{size:10} },
       },
       hovertemplate: "a=%{x:.2f}<br>r=%{y:.3f}<br>δ=%{marker.color:.3f}<extra></extra>",
-      showlegend: false },
-  ], {
+      showlegend: false }
+  );
+  Plotly.react("plot-droSamples", fitTraces, {
     margin: { l: 50, r: 78, t: 6, b: 36 },
     xaxis: { title: "action&nbsp; <i>a</i>", range: [A_MIN, A_MAX], gridcolor:"#eee", zeroline:false },
-    yaxis: { title: "reward&nbsp; <i>r</i>", gridcolor:"#eee", zeroline:true, zerolinecolor:"#999" },
+    yaxis: { title: "reward target / fit", range:[fitLo-fitPad,fitHi+fitPad], gridcolor:"#eee", zeroline:true, zerolinecolor:"#999" },
     yaxis2:{ overlaying:"y", side:"right", showgrid:false, zeroline:false, showticklabels:false },
     plot_bgcolor:"#fff", paper_bgcolor:"#fff",
+    legend:{orientation:'h',x:0,y:1.14,font:{size:10}},
     font: { family:"Inter Tight, sans-serif", size:11 },
   }, { displayModeBar:false, responsive:true });
 
-  // Panel B: per-sample residual bars, sorted ascending by δ
-  const sorted = res.map((d, k) => ({ d, k })).sort((a, b) => a.d - b.d);
-  const xs = sorted.map((_, k) => k + 1);
-  const ys = sorted.map(s => s.d);
-  const rms = Math.sqrt(ys.reduce((acc, v) => acc + v*v, 0) / ys.length);
-  Plotly.react("plot-droResiduals", [
-    { x: [0, ys.length + 1], y: [0, 0], mode:"lines",
-      line: { color:"#999", width:0.8 }, hoverinfo:"skip", showlegend:false },
-    { x: xs, y: ys, type:"bar",
-      marker: { color: ys.map(v => v >= 0 ? C.dro : C.pi) },
-      hovertemplate: "δ=%{y:.3f}<extra></extra>",
-      showlegend: false },
-  ], {
+  const residualCovered = covered.map(i=>residualCurve[i]).concat(res);
+  const rLo = Math.min(0,...residualCovered), rHi = Math.max(0,...residualCovered);
+  const rPad = Math.max(0.08,0.1*(rHi-rLo));
+  const rms = N ? Math.sqrt(res.reduce((acc,v)=>acc+v*v,0)/N) : null;
+  const residualTraces = [
+    {x:[A_MIN,A_MAX],y:[0,0],mode:'lines',name:'zero residual',line:{color:'#999',width:0.8},hoverinfo:'skip',showlegend:false},
+    {x:A_GRID,y:residualCurve,mode:'lines',name:'population residual δ(a)',line:{color:C.dro,width:2},
+      hovertemplate:'a=%{x:.2f}<br>δ=%{y:.3f}<extra>population curve</extra>'},
+    {x:A_GRID,y:refY,mode:'lines',name:'πref coverage',yaxis:'y2',line:{color:C.ref,width:1,dash:'dot'},
+      fill:'tozeroy',fillcolor:'rgba(122,127,133,0.06)',hoverinfo:'skip'},
+  ];
+  if (N) residualTraces.push({x:samples,y:res,mode:'markers',name:'sample residuals',
+    marker:{size:8,color:res.map(v=>v>=0?C.dro:C.pi),line:{color:'white',width:1}},
+    hovertemplate:'a=%{x:.2f}<br>δ=%{y:.3f}<extra>sample</extra>'});
+  Plotly.react("plot-droResiduals", residualTraces, {
     margin: { l: 50, r: 10, t: 6, b: 36 },
-    xaxis: { title: `sample (sorted) — RMS(δ) = ${rms.toFixed(3)}`,
-             showticklabels:false, gridcolor:"#eee", zeroline:false },
-    yaxis: { title: "residual&nbsp; δ<sub>i</sub>",
-             zeroline:true, zerolinecolor:"#999", gridcolor:"#eee" },
+    xaxis: { title: N ? `action a — sample RMS(δ) = ${rms.toFixed(3)}` : 'action a — resample to add offline points',
+             range:[A_MIN,A_MAX],gridcolor:"#eee",zeroline:false },
+    yaxis: { title: "residual&nbsp; δ(a)",range:[rLo-rPad,rHi+rPad],zeroline:true,zerolinecolor:"#999",gridcolor:"#eee" },
+    yaxis2:{overlaying:'y',side:'right',showgrid:false,zeroline:false,showticklabels:false},
     plot_bgcolor:"#fff", paper_bgcolor:"#fff",
+    legend:{orientation:'h',x:0,y:1.14,font:{size:10}},
     font: { family:"Inter Tight, sans-serif", size:11 },
   }, { displayModeBar:false, responsive:true });
 
@@ -2546,78 +3253,75 @@ function renderDROPanels() {
   renderDROLoss();
 }
 
-/* Baseline V over steps. The dashed asymptote is β_DRO · log Z, where
-   Z = ∫ π_ref(a) exp(r(a)/β_DRO) da — the zero of the DRO residual at
-   the joint optimum (π_θ = π*, V = β_DRO log Z). */
+/* Value V over steps. The dashed reference is β_DRO · log Z_DRO, where
+   Z_DRO = ∫ π_ref(a) exp(r(a)/β_DRO) da — the zero of the DRO residual at
+   the unrestricted joint optimum (π_θ = π*_DRO, V = β_DRO log Z_DRO). */
+let _droOptimalVCache = {key:'', value:null};
 function droOptimalV() {
+  const key = `${S.rewardPreset}|${S.muRef}|${S.sigRef}|${S.betaDRO}`;
+  if (_droOptimalVCache.key === key) return _droOptimalVCache.value;
+  const n = 1201;
+  const lo = S.muRef - 8*S.sigRef, hi = S.muRef + 8*S.sigRef;
+  const da = (hi-lo)/(n-1);
   let maxLog = -Infinity;
-  const logUn = new Array(A_N);
-  for (let i = 0; i < A_N; i++) {
-    logUn[i] = logGauss(A_GRID[i], S.muRef, S.sigRef) + reward(A_GRID[i]) / S.betaDRO;
+  const logUn = new Array(n);
+  for (let i = 0; i < n; i++) {
+    const a = lo + i*da;
+    logUn[i] = logGauss(a, S.muRef, S.sigRef) + reward(a) / S.betaDRO;
     if (logUn[i] > maxLog) maxLog = logUn[i];
   }
   let s = 0;
-  for (let i = 0; i < A_N; i++) s += Math.exp(logUn[i] - maxLog);
-  // ∫... = exp(maxLog) · Σ exp(logUn - maxLog) · DA
-  const logZ = maxLog + Math.log(s * DA);
-  return S.betaDRO * logZ;
+  for (let i = 0; i < n; i++) s += (i===0||i===n-1 ? 0.5 : 1)*Math.exp(logUn[i]-maxLog);
+  const value = S.betaDRO * (maxLog + Math.log(s*da));
+  _droOptimalVCache = {key,value};
+  return value;
 }
 
 function renderDROVPanel() {
   const Vstar = droOptimalV();
-  // Achievable equilibrium V at the current Gaussian θ: ∂_V L = 0 ⇒
-  //   V_∞(θ) = E_{π_ref}[r] + β_DRO · KL(π_ref || π_θ)
-  // Strictly < β_DRO log Z whenever π_θ ≠ π* (Jensen). This is the value
-  // V is dynamically chasing at every moment, given the policy class.
-  const Vinf = expectedReward(S.muRef, S.sigRef)
-             + S.betaDRO * klGaussian(S.muRef, S.sigRef, S.muTh, S.sigTh);
-  const ys = S.trajVdro.concat([S.Vdro]);
-  const xs = ys.map((_, k) => k);
-  const xMax = Math.max(2, ys.length - 1);
-  // Y-range: include V history and both reference lines, with a little pad.
-  const lo = Math.min(Vstar, Vinf, ...ys);
-  const hi = Math.max(Vstar, Vinf, ...ys);
+  const hist = S.droLossHist.slice();
+  hist.push(droDiagnosticsAt());
+  const xs = hist.map((_,k)=>k);
+  const valueY = hist.map(h=>h.V);
+  const batchTargetY = hist.map(h=>h.batch ? h.batch.VTarget : null);
+  const popTargetY = hist.map(h=>h.population.VTarget);
+  const xMax = Math.max(2, hist.length - 1);
+  const finiteY = [Vstar,...valueY,...batchTargetY,...popTargetY].filter(Number.isFinite);
+  const lo = Math.min(...finiteY);
+  const hi = Math.max(...finiteY);
   const pad = Math.max(0.15, 0.15 * (hi - lo));
   Plotly.react("plot-droV", [
-    { x: [0, xMax], y: [Vstar, Vstar], mode:"lines", name:"β·log Z",
+    { x: [0, xMax], y: [Vstar, Vstar], mode:"lines", name:"βDRO·log ZDRO",
       line:{ color:"#444", width:1.2, dash:"dash" },
-      hovertemplate: `β<sub>DRO</sub> log Z = ${Vstar.toFixed(3)} (unreachable for Gaussian π<sub>θ</sub>)<extra></extra>`,
-      showlegend: false },
-    { x: [0, xMax], y: [Vinf, Vinf], mode:"lines", name:"V∞(θ)",
-      line:{ color:C.dro, width:1.2, dash:"dot" },
-      hovertemplate: `V<sub>∞</sub>(θ) = ${Vinf.toFixed(3)}<extra></extra>`,
-      showlegend: false },
-    { x: xs, y: ys, mode:"lines+markers", name:"V",
+      hovertemplate: `unrestricted β<sub>DRO</sub> log Z<sub>DRO</sub> = ${Vstar.toFixed(3)}<extra></extra>` },
+    { x:xs, y:batchTargetY, mode:'lines', name:'batch V target',
+      line:{color:C.ppo,width:1.8,dash:'dash'},connectgaps:false,
+      hovertemplate:'step %{x}<br>V*N=%{y:.3f}<extra>batch target</extra>' },
+    { x:xs, y:popTargetY, mode:'lines', name:'population V target',
+      line:{color:C.accent,width:1.8,dash:'dot'},
+      hovertemplate:'step %{x}<br>V*pop=%{y:.3f}<extra>population target</extra>' },
+    { x: xs, y: valueY, mode:"lines+markers", name:"learned V",
       line:{ color:C.dro, width:2 },
       marker:{ size:5, color:C.dro },
       hovertemplate: "step %{x}<br>V=%{y:.3f}<extra></extra>",
-      showlegend: false },
-    { x: [xs[xs.length-1]], y: [ys[ys.length-1]], mode:"markers",
+      },
+    { x: [xs[xs.length-1]], y: [valueY[valueY.length-1]], mode:"markers", name:'current V',
       marker:{ size:11, color:C.dro, line:{ color:"white", width:2 } },
       hovertemplate: `current V = ${S.Vdro.toFixed(3)}<extra></extra>`,
       showlegend: false },
   ], {
     margin: { l: 50, r: 14, t: 6, b: 36 },
     xaxis: { title: "DRO step", gridcolor:"#eee", zeroline:false, range:[0, xMax] },
-    yaxis: { title: "baseline&nbsp; <i>V</i>", gridcolor:"#eee", zeroline:true, zerolinecolor:"#bbb",
+    yaxis: { title: "value&nbsp; <i>V</i>", gridcolor:"#eee", zeroline:true, zerolinecolor:"#bbb",
              range: [lo - pad, hi + pad] },
-    annotations: [
-      { x: xMax, y: Vstar, xref:"x", yref:"y", xanchor:"right", yanchor:"bottom",
-        text: `β<sub>DRO</sub> log Z = ${Vstar.toFixed(3)}`,
-        showarrow:false, font:{ size:10, color:"#555" } },
-      { x: xMax, y: Vinf, xref:"x", yref:"y", xanchor:"right",
-        yanchor: Vinf < Vstar ? "top" : "bottom",
-        text: `V<sub>∞</sub>(θ) = ${Vinf.toFixed(3)}`,
-        showarrow:false, font:{ size:10, color:C.dro } },
-    ],
+    legend:{orientation:'h',x:0,y:1.16,font:{size:10}},
     plot_bgcolor:"#fff", paper_bgcolor:"#fff",
     font: { family:"Inter Tight, sans-serif", size:11 },
   }, { displayModeBar:false, responsive:true });
 }
 
-// DRO loss over steps: total MSE (teal) split into the bias slice the V
-// update removes (gray dashed). History holds pre-update values; the live
-// (current θ, V) point is appended so the curve ends at the present state.
+// Actual-V training and population objectives. The gray trace isolates the
+// batch mean-residual component caused by value-target lag.
 function renderDROLoss() {
   const hist = S.droLossHist.slice();
   const live = droLossParts();
@@ -2634,24 +3338,29 @@ function renderDROLoss() {
   }
   const xs    = hist.map((_, k) => k);
   const xMax  = Math.max(2, hist.length - 1);
-  const lossY = hist.map(h => h.loss);
-  const biasY = hist.map(h => h.bias);
-  const hi    = Math.max(1e-6, ...lossY);
+  const batchLossY = hist.map(h => h.batch.loss);
+  const populationLossY = hist.map(h => h.population.loss);
+  const biasY = hist.map(h => h.batch.bias);
+  const hi    = Math.max(1e-6, ...batchLossY, ...populationLossY);
   Plotly.react("plot-droLoss", [
-    { x:xs, y:biasY, mode:"lines", name:"bias ½·(mean δ)²",
+    { x:xs, y:biasY, mode:"lines", name:"batch value-lag bias",
       line:{ color:"#888", width:1.5, dash:"dash" },
       hovertemplate:"step %{x}<br>bias = %{y:.4f}<extra></extra>", showlegend:false },
-    { x:xs, y:lossY, mode:"lines+markers", name:"total loss",
+    { x:xs, y:populationLossY, mode:"lines", name:"population loss",
+      line:{ color:C.accent, width:2, dash:'dot' },
+      hovertemplate:"step %{x}<br>Lpop = %{y:.4f}<extra></extra>" },
+    { x:xs, y:batchLossY, mode:"lines+markers", name:"batch loss",
       line:{ color:C.dro, width:2.4 }, marker:{ size:5, color:C.dro },
-      hovertemplate:"step %{x}<br>L = %{y:.4f}<extra></extra>", showlegend:false },
-    { x:[xs[xs.length-1]], y:[lossY[lossY.length-1]], mode:"markers",
+      hovertemplate:"step %{x}<br>LN = %{y:.4f}<extra></extra>" },
+    { x:[xs[xs.length-1]], y:[batchLossY[batchLossY.length-1]], mode:"markers",
       marker:{ size:11, color:C.dro, line:{ color:"white", width:2 } },
-      hovertemplate:`current L = ${lossY[lossY.length-1].toFixed(4)}<extra></extra>`, showlegend:false },
+      hovertemplate:`current batch L = ${batchLossY[batchLossY.length-1].toFixed(4)}<extra></extra>`, showlegend:false },
   ], {
     margin:{ l:52, r:14, t:6, b:36 },
     xaxis:{ title:"DRO step", gridcolor:"#eee", zeroline:false, range:[0, xMax] },
     yaxis:{ title:"loss&nbsp; ½·mean(δ²)", gridcolor:"#eee",
             zeroline:false, range:[0, hi * 1.08] },
+    legend:{orientation:'h',x:0,y:1.15,font:{size:10}},
     plot_bgcolor:"#fff", paper_bgcolor:"#fff",
     font:{ family:"Inter Tight, sans-serif", size:11 },
   }, { displayModeBar:false, responsive:true });
@@ -2664,6 +3373,7 @@ function renderMetrics(starInfo) {
   const Er = expectedReward(S.muTh, S.sigTh);
   const KL = klGaussian(S.muTh, S.sigTh, S.muRef, S.sigRef);
   const J  = Er - S.beta*KL;
+  const jOracle = computeGaussianJOracle();
   const [gm, gs] = gradJ(S.muTh, S.sigTh);
   const gmag = Math.sqrt(gm*gm + gs*gs);
   document.getElementById('m-Er').textContent   = fmt(Er);
@@ -2671,7 +3381,9 @@ function renderMetrics(starInfo) {
   document.getElementById('m-J').textContent    = fmt(J);
   document.getElementById('m-grad').textContent = fmt(gmag);
   document.getElementById('m-Jstar').textContent= fmt(starInfo.Jstar);
+  document.getElementById('m-Jgauss').textContent= fmt(jOracle.J);
   document.getElementById('m-star').textContent = `${starInfo.muStar.toFixed(2)} , ${starInfo.sigStar.toFixed(2)}`;
+  document.getElementById('m-gauss').textContent = `${jOracle.mu.toFixed(2)} , ${jOracle.sig.toFixed(2)}`;
 }
 
 /* ============================================================
@@ -2706,7 +3418,7 @@ function renderAll() {
     recomputeDPOQuantities();
     renderDPOPanels();
   } else if (tab === 'dro') {
-    renderLandscape(starInfo, "plot-trajectoriesDRO", true, {exact:true, pg:false, ppo:false, grpo:false, dpo:true, dro:true});
+    renderDROLandscape(starInfo);
     recomputeDROQuantities();
     renderDROPanels();
   } else if (tab === 'compare') {
@@ -2773,10 +3485,14 @@ function renderCompareJ(starInfo) {
         hovertemplate: `step %{x}<br>${label} J = %{y:.3f}<extra></extra>` });
     }
   }
-  // J(π*) — the ceiling none of them can exceed
+  const jOracle = computeGaussianJOracle();
+  // The unrestricted ceiling and the tighter ceiling for this Gaussian family.
   traces.push({ x: [0, xMax], y: [starInfo.Jstar, starInfo.Jstar], mode: 'lines',
-    name: 'J(π*)', line: { color: '#444', width: 1.2, dash: 'dash' },
+    name: 'unrestricted J(π*)', line: { color: '#444', width: 1.2, dash: 'dash' },
     hovertemplate: `J(π*) = ${starInfo.Jstar.toFixed(3)}<extra></extra>` });
+  traces.push({ x: [0, xMax], y: [jOracle.J, jOracle.J], mode: 'lines',
+    name: 'best Gaussian J', line: { color: C.accent, width: 1.4, dash: 'dot' },
+    hovertemplate: `best Gaussian J = ${jOracle.J.toFixed(3)}<extra></extra>` });
   Plotly.react("plot-cmpJ", traces, {
     margin: { l: 52, r: 14, t: 6, b: 36 },
     xaxis: { title: "step", gridcolor: "#eee", zeroline: false, range: [0, xMax] },
@@ -2880,9 +3596,13 @@ function togglePlayDRO() {
    ============================================================ */
 function resetPolicy() {
   S.muTh = 0; S.sigTh = 1.0;
-  // The learned baselines are training state too — clearing their history
-  // charts (trajVdro, droLossHist) while keeping a stale V would mislead.
+  // The learned values are training state too — clearing their history
+  // charts while keeping stale values would mislead.
   S.Vppo = 0; S.Vdro = 0;
+  if (S.droMode === 'profile' && S.dro.samples.length) {
+    S.Vdro = droEmpiricalVTarget(S.muTh, S.sigTh,
+      {samples:S.dro.samples,rewards:S.dro.rewards}, S.betaDRO);
+  }
   document.getElementById('val-Vppo').textContent = S.Vppo.toFixed(3);
   document.getElementById('val-Vdro').textContent = S.Vdro.toFixed(3);
   S.trajExact = []; S.trajPG = []; S.trajPPO = []; S.trajGRPO = []; S.trajDPO = []; S.trajDRO = []; S.trajVdro = []; S.dpoAccHist = []; S.droLossHist = []; S.cmpJ = null;
@@ -2919,6 +3639,7 @@ function resetAll() {
   S.G = 8;       S.eps = 0.2;     S.lrG = 0.03;   S.Kgrpo = 4;
   S.betaDPO = 0.5; S.N = 32; S.lrDPO = 0.05; S.prefNoise = 0.5;
   S.betaDRO = 0.5; S.NDRO = 32; S.lrDROth = 0.05; S.lrDROv = 0.1; S.Vdro = 0;
+  S.droMode = "practical"; S.droSurface = "population"; S.droDatasetId++;
   S.ppoTick = 0; S.grpoTick = 0;
 
   // Drop generated data and trajectories
@@ -2973,6 +3694,10 @@ function resetAll() {
   setSlider('lrDROth',  S.lrDROth,  3);
   setSlider('lrDROv',   S.lrDROv,   3);
   document.getElementById('val-Vdro').textContent = S.Vdro.toFixed(3);
+  document.getElementById('droMode').value = S.droMode;
+  document.getElementById('droSurface').value = S.droSurface;
+  document.getElementById('lrDROv').disabled = false;
+  document.getElementById('droValueLrControl').style.opacity = '1';
   document.getElementById('rewardPreset').value = S.rewardPreset;
 
   writeHash();   // everything is at defaults again → clears the hash
@@ -3060,6 +3785,40 @@ function runSelfTest() {
     for (const row of Z) for (const v of row) zmax = Math.max(zmax, v);
     check(`J(π*) ≥ max Gaussian J ${preset}`, star.Jstar >= zmax - 1e-3,
           `J(π*) = ${star.Jstar.toFixed(4)}, grid max = ${zmax.toFixed(4)}`);
+    const gaussianOracle = computeGaussianJOracle();
+    check(`Gaussian J oracle ≥ landscape grid ${preset}`,
+          gaussianOracle.J >= zmax - 1e-4
+            && close(gaussianOracle.J, objective(gaussianOracle.mu, gaussianOracle.sig), tol),
+          `oracle J = ${gaussianOracle.J.toFixed(4)}, grid max = ${zmax.toFixed(4)}`);
+    const testBD = 0.6;
+    const popOracle = droPopulationOracle(testBD);
+    let popGridMin = Infinity;
+    for (const sig of LAND_SIG) for (const mu of LAND_MU) {
+      popGridMin = Math.min(popGridMin, droPopulationProfiledLoss(mu, sig, testBD));
+    }
+    check(`population DRO oracle ≤ landscape grid ${preset}`,
+          popOracle.loss <= popGridMin + 1e-7,
+          `oracle L̄ = ${popOracle.loss.toFixed(6)}, grid min = ${popGridMin.toFixed(6)}`);
+  }
+
+  { // Nonlinear loss coloring must preserve order/raw hover data and fail safe.
+    const raw = [[0.02,0.03,0.08],[0.3,4,170],[2600,75000,6e6]];
+    const encoded = droLossColorEncoding(raw);
+    const pairs = raw.flat().map((v,i) => [v, encoded.z.flat()[i]])
+      .sort((a,b) => a[0]-b[0]);
+    const monotone = pairs.every((p,i) => i === 0 || p[1] >= pairs[i-1][1]);
+    const cap = sortedQuantile(raw.flat().sort((a,b)=>a-b), 0.90);
+    const saturated = pairs.filter(p => p[0] >= cap-1e-12)
+      .every(p => Math.abs(p[1]-encoded.zmax) < 1e-12);
+    check('DRO loss color encoding preserves raw values + order',
+          encoded.compressed && encoded.customdata === raw && monotone && saturated
+            && encoded.z.flat().every(Number.isFinite),
+          `compressed=${encoded.compressed} · zmax=${encoded.zmax.toFixed(3)} · cap=${cap.toFixed(1)}`);
+    const constant = [[2,2],[2,2]];
+    const fallback = droLossColorEncoding(constant);
+    check('DRO loss color encoding constant fallback',
+          !fallback.compressed && fallback.z === constant && fallback.customdata === constant,
+          `compressed=${fallback.compressed}`);
   }
 
   /* Algorithm cores: freeze a batch, finite-difference each core's own
@@ -3135,6 +3894,62 @@ function runSelfTest() {
       const fdV = -(L(thMu, thSig, V0 + h) - L(thMu, thSig, V0 - h)) / (2*h);
       check('droStepCore ≡ −∇V L', close(gV, fdV, tol),
             `∂V ${gV.toFixed(6)} vs ${fdV.toFixed(6)}`);
+
+      // Practical mode cancels beta in the policy step and updates log sigma.
+      const practical = droStepCore(thMu, thSig, V0, data,
+        { betaDRO: bD, lrTh: lr, lrV: lr, mode: 'practical' });
+      const practicalMu = thMu - lr*practical.gradient.mu/bD;
+      const practicalSig = Math.exp(Math.log(thSig) - lr*thSig*practical.gradient.sig/bD);
+      check('droStepCore practical scaling + log σ',
+            close(practical.mu, practicalMu, tol) && close(practical.sig, practicalSig, tol),
+            `μ ${practical.mu.toFixed(6)} vs ${practicalMu.toFixed(6)} · σ ${practical.sig.toFixed(6)} vs ${practicalSig.toFixed(6)}`);
+
+      // Profile mode must zero the batch-mean residual both before and after
+      // the policy update, independently of the incoming learned V.
+      const profiled = droStepCore(thMu, thSig, V0, data,
+        { betaDRO: bD, lrTh: lr, lrV: lr, mode: 'profile' });
+      let postMeanResidual = 0;
+      for (let i = 0; i < data.samples.length; i++) {
+        postMeanResidual += droResidualAt(data.samples[i], data.rewards[i],
+                                          profiled.mu, profiled.sig, profiled.V, bD);
+      }
+      postMeanResidual /= data.samples.length;
+      check('droStepCore profile V exactly',
+            close(profiled.VUsed, droEmpiricalVTarget(thMu, thSig, data, bD), tol)
+              && Math.abs(postMeanResidual) < 1e-10,
+            `pre V* ${profiled.VUsed.toFixed(6)} · post mean δ ${postMeanResidual.toExponential(2)}`);
+
+      // The analytic population profiled gradient should match finite
+      // differences, and its V target has a closed-form KL expression.
+      const pop = droPopulationProfiledStats(thMu, thSig, bD);
+      const fdPopMu = (droPopulationProfiledLoss(thMu+h, thSig, bD)
+                     - droPopulationProfiledLoss(thMu-h, thSig, bD)) / (2*h);
+      const fdPopSig = (droPopulationProfiledLoss(thMu, thSig+h, bD)
+                      - droPopulationProfiledLoss(thMu, thSig-h, bD)) / (2*h);
+      const popVFormula = expectedReward(S.muRef, S.sigRef)
+                        + bD*klGaussian(S.muRef, S.sigRef, thMu, thSig);
+      check('population DRO profiled gradient + V target',
+            close(pop.gradMu, fdPopMu, tol) && close(pop.gradSig, fdPopSig, tol)
+              && close(pop.V, popVFormula, tol),
+            `∂μ ${pop.gradMu.toFixed(6)} vs ${fdPopMu.toFixed(6)} · ∂σ ${pop.gradSig.toFixed(6)} vs ${fdPopSig.toFixed(6)} · V* ${pop.V.toFixed(6)}`);
+
+      // A reward that is exactly V + beta log(pi_target/pi_ref) is a
+      // realizable quadratic regression.  The natural-parameter oracle must
+      // recover that Gaussian with zero loss; a reward offset may only move V.
+      const targetMu = 0.7, targetSig = 1.2, targetV = 0.35;
+      const samples = [-2.3, -1.4, -0.6, 0.1, 0.8, 1.7, 2.6];
+      const exactRewards = samples.map(a => targetV + bD*(
+        logGauss(a, targetMu, targetSig) - logGauss(a, S.muRef, S.sigRef)));
+      const exactData = { samples, rewards: exactRewards };
+      const oracle = droEmpiricalOracle(exactData, bD);
+      const shifted = droEmpiricalOracle({ samples, rewards: exactRewards.map(r => r + 2.5) }, bD);
+      check('DRO natural-parameter oracle: realizable + offset invariant',
+            Math.abs(oracle.mu-targetMu) < 1e-8 && Math.abs(oracle.sig-targetSig) < 1e-8
+              && oracle.loss < 1e-10
+              && Math.abs(shifted.mu-oracle.mu) < 1e-8
+              && Math.abs(shifted.sig-oracle.sig) < 1e-8
+              && Math.abs((shifted.V-oracle.V)-2.5) < 1e-8,
+            `oracle (${oracle.mu.toFixed(6)}, ${oracle.sig.toFixed(6)}) · loss ${oracle.loss.toExponential(2)} · ΔV ${(shifted.V-oracle.V).toFixed(6)}`);
     }
     { // PG is stochastic: with a large batch its estimate must land on ∇J
       setSeed(77);
@@ -3174,11 +3989,23 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  bindSlider('muRef',  'muRef',  2);
-  bindSlider('sigRef', 'sigRef', 2);
-  bindSlider('beta',   'beta',   2);
-  bindSlider('mu',     'muTh',   2);
-  bindSlider('sig',    'sigTh',  2);
+  const stopDROForConfigChange = () => {
+    if (S.playDRO) togglePlayDRO();
+  };
+  const dropDROEnvironment = () => {
+    stopDROForConfigChange();
+    clearDRODiagnostics({dropData:true, resetValue:true});
+  };
+  const clearDRORun = (resetValue=false) => {
+    stopDROForConfigChange();
+    clearDRODiagnostics({resetValue});
+  };
+
+  bindSlider('muRef',  'muRef',  2, dropDROEnvironment);
+  bindSlider('sigRef', 'sigRef', 2, dropDROEnvironment);
+  bindSlider('beta',   'beta',   2, () => clearDRORun(false));
+  bindSlider('mu',     'muTh',   2, () => clearDRORun(false));
+  bindSlider('sig',    'sigTh',  2, () => clearDRORun(false));
   bindSlider('lrExact','lrExact',3);
   bindSlider('NPG',    'NPG',    0, () => { S.NPG = parseInt(S.NPG); });
   bindSlider('lrPG',   'lrPG',   3);
@@ -3195,10 +4022,35 @@ document.addEventListener('DOMContentLoaded', () => {
   bindSlider('N',        'N',        0, () => { S.N = parseInt(S.N); });
   bindSlider('lrDPO',    'lrDPO',    3);
   bindSlider('prefNoise','prefNoise',2);
-  bindSlider('betaDRO',  'betaDRO',  2);
-  bindSlider('NDRO',     'NDRO',     0, () => { S.NDRO = parseInt(S.NDRO); });
+  bindSlider('betaDRO',  'betaDRO',  2, () => clearDRORun(true));
+  bindSlider('NDRO',     'NDRO',     0, () => {
+    S.NDRO = parseInt(S.NDRO);
+    dropDROEnvironment();
+  });
   bindSlider('lrDROth',  'lrDROth',  3);
   bindSlider('lrDROv',   'lrDROv',   3);
+
+  const modeEl = document.getElementById('droMode');
+  const updateDROModeUI = () => {
+    const profile = S.droMode === 'profile';
+    const lrV = document.getElementById('lrDROv');
+    lrV.disabled = profile;
+    document.getElementById('droValueLrControl').style.opacity = profile ? '0.48' : '1';
+  };
+  modeEl.addEventListener('change', () => {
+    stopDROForConfigChange();
+    S.droMode = modeEl.value;
+    clearDRODiagnostics({resetValue:true});
+    updateDROModeUI();
+    scheduleHashWrite();
+    renderAll();
+  });
+  document.getElementById('droSurface').addEventListener('change', e => {
+    S.droSurface = e.target.value;
+    scheduleHashWrite();
+    renderAll();
+  });
+  updateDROModeUI();
 
   // Compare tab — sliders only drive readouts; compareRunAll reads the
   // DOM values directly when the user presses Run all.
@@ -3244,12 +4096,15 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   document.getElementById('rewardPreset').addEventListener('change', (e) => {
+    if (S.playDRO) togglePlayDRO();
     S.rewardPreset = e.target.value;
     S.pg.samples = []; S.pg.rewards = []; S.pg.advs = [];
     S.ppo.samples = []; S.ppo.rewards = []; S.ppo.advs = []; S.ppo.ratios = []; S.ppo.surr = [];
     S.grpo.samples = []; S.grpo.rewards = []; S.grpo.advs = []; S.grpo.ratios = []; S.grpo.surr = [];
     S.dpo.pairs = []; S.dpo.margins = []; S.dpo.selected = null;
     S.dro.samples = []; S.dro.rewards = []; S.dro.residuals = []; S.dro.selected = null;
+    S.Vdro = 0; S.droDatasetId++;
+    document.getElementById('val-Vdro').textContent = S.Vdro.toFixed(3);
     S.trajExact = []; S.trajPG = []; S.trajPPO = []; S.trajGRPO = []; S.trajDPO = []; S.trajDRO = []; S.trajVdro = []; S.dpoAccHist = []; S.droLossHist = []; S.cmpJ = null;
     scheduleHashWrite();
     renderAll();
@@ -3257,6 +4112,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Restore any shared configuration from the URL hash, then render.
   readHash();
+  updateDROModeUI();
   renderAll();
 
   if (new URLSearchParams(location.search).has('selftest')) runSelfTest();

@@ -2,7 +2,7 @@
 
 Interactive browser visualization comparing six alignment algorithms — **RLHF exact**, **PG** (REINFORCE), **PPO**, **GRPO**, **DPO**, and **DRO** — on a 1D Gaussian policy $\pi_\theta = \mathcal{N}(\mu_\theta, \sigma_\theta^2)$ with a KL-anchored reference $\pi_{\mathrm{ref}}$ and a sum-of-Gaussian-bumps reward.
 
-Each algorithm has its own tab (samples, advantages/ratios/margins/residuals as appropriate) plus a shared loss landscape over $(\mu_\theta, \sigma_\theta)$. The **Compare** tab runs all six from the same starting point, overlays their trajectories, and charts $J(\theta_t)$ over steps — optionally as a median + min–max band over multiple runs per algorithm.
+Each algorithm has its own tab (samples, advantages/ratios/margins/residuals as appropriate) plus a shared loss landscape over $(\mu_\theta, \sigma_\theta)$. The shared view distinguishes the unrestricted $\pi^\star$ from the Gaussian that actually maximizes the displayed objective. The **Compare** tab runs all six from the same starting point, overlays their trajectories, and charts $J(\theta_t)$ over steps — optionally as a median + min–max band over multiple runs per algorithm.
 
 ## Run
 
@@ -18,7 +18,9 @@ Dependencies (Plotly, KaTeX, Google Fonts) load from CDNs (with subresource-inte
 - **Seeded runs** — set a nonzero seed in the sidebar to make all sampling reproducible; *Run all* on the Compare tab then replays bit-identically.
 - **Shareable URLs** — every control that differs from its default is serialized into `location.hash`, so a specific configuration (reward preset, β, starting point, active tab, …) can be sent as a link.
 - **Inner epochs (K)** — PPO and GRPO take K gradient steps per batch before refreshing $\pi_{\mathrm{old}}$, so the clipped surrogate actually engages (ratios drift from 1 between refreshes).
-- **Self-test** — open `index.html?selftest` to run finite-difference checks of every analytic gradient across all reward presets, sanity checks on $\pi^\star$, and per-algorithm core checks (each sampled update rule — PPO, GRPO, DPO, DRO — must equal the gradient of its own surrogate on a frozen batch, and PG's large-batch estimate must land on $\nabla J$); results land in the console and a banner.
+- **DRO diagnostics** — switch one trajectory among the RLHF, profiled population-DRO, and profiled batch-DRO surfaces; compare their exact optima and local directions; inspect the reward fit and residuals by action; and track batch versus population loss and the moving value targets. DRO loss surfaces use a disclosed nonlinear color encoding while keeping exact raw losses in the colorbar and hover.
+- **DRO optimizer modes** — compare raw MSE descent, the paper's practical $1/\beta$-rescaled log-$\sigma$ update, and a mode that profiles the scalar value $V$ exactly on every batch step. A one-click batch oracle separates optimization error from finite-data and policy-class error.
+- **Self-test** — open `index.html?selftest` to run finite-difference checks of every analytic gradient across all reward presets, sanity checks on $\pi^\star$, per-algorithm frozen-batch checks, and DRO oracle/value invariants (population gradients, exact value profiling, realizable quadratic recovery, and reward-offset invariance); results land in the console and a banner.
 
 ## Files
 
